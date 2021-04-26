@@ -4,6 +4,40 @@ import os
 import matplotlib.pyplot as plot
 import matplotlib.animation as animation
 import time
+import subprocess
+import queue
+import threading
+import logging
+import socket
+
+class Logger ():
+    def __init__ (self):
+        self.log_format = "[%(name)s] %(levelname)s: %(message)s"
+        self.date_format = '%d-%m-%Y %H:%M:%S'
+        self.logger = logging.getLogger(__name__)
+    def set_debug(self):
+        logging.basicConfig(level=logging.DEBUG, format=self.log_format, datefmt=self.date_format)
+
+    def set_info(self):
+        logging.basicConfig(level=logging.INFO, format=self.log_format, datefmt=self.date_format)
+
+    def set_warning(self):
+        logging.basicConfig(level=logging.WARNING, format=self.log_format, datefmt=self.date_format)
+
+    def set_error(self):
+        logging.basicConfig(level=logging.ERROR, format=self.log_format, datefmt=self.date_format)
+
+    def error(self, msg):
+        logging.error(msg)
+    
+    def debug(self, msg):
+        logging.debug(msg)
+
+    def info(self, msg):
+        logging.info(msg)
+
+    def warning(self, msg):
+        logging.warning(msg)
 
 class Oscilloscope ():
     def __init__ (self, config):
@@ -11,17 +45,17 @@ class Oscilloscope ():
         self.baud = config['baud']
         self.voltage_ref = config['aref']
         self.num_sensors = config['sensors']
-        self.buffer_size = config['samples']
-        self.ADC_resolution = 1023
-        self.sample_buffer = numpy.zeros(self.num_sensors * self.buffer_size)
-        self.sample_buffer = self.sample_buffer.reshape(self.num_sensors, self.buffer_size)
+        self.ADC_resolution = 2**config['adc_res'] - 1
+        self.sample_buffer = numpy.zeros(self.num_sensors)
+        self.logger = Logger()
+        self.logger.set_warning()
         self.sample = 0
         try:
             self.ser = serial.Serial(port=self.port, baudrate=self.baud)
         except:
-            print ('ERROR: Could not connect to serial port ' + self.port)
-            exit(1)
+            self.logger.error ('Could not connect to serial port ' + self.port)
 
+    # Returns a copy of the object's internal buffer
     def get_serial_data (self):
         success_read = False
         while not success_read:
@@ -30,119 +64,83 @@ class Oscilloscope ():
                 data = data.decode('utf-8')
                 data = data.rsplit('|')
                 data.remove('\r\n')
+                self.logger.debug(f"Recieved {data}")
                 data = numpy.array(data)
                 for i in range(self.num_sensors):
                     analog_value = float( (int(data[i])*self.voltage_ref) / self.ADC_resolution)
-                    self.sample_buffer[i][self.sample] = analog_value
-                self.sample = (self.sample % self.buffer_size) + 1
+                    self.sample_buffer[i] = analog_value
                 success_read = True
-            except KeyboardInterrupt:
-                print('ERROR: Giving up reading!')
-                exit(0)
             except:
                 success_read = False
+        return numpy.copy(self.sample_buffer)
 
-    def get_voltage (self):
-        if self.unformatted_voltage:
-            identifier = 'V'
-            self.voltage = self.unformatted_voltage.rsplit('|')
-            self.voltage.remove(identifier)
-            self.voltage.pop()
-            result = list(map(int, self.voltage))
-        else:
-            result = self.zeroes
-        yield result
-
-    def get_current (self):
-        if self.unformatted_current:
-            identifier = 'I'
-            self.current = self.unformatted_current.rsplit('|')
-            self.current.remove(identifier)
-            self.current.pop()
-            result = list(map(int, self.current))
-        else:
-            result = self.zeroes
-        yield result
-
-    def get_instant_power (self):
-        instant_power = [voltage*current for voltage,current in zip(self.voltage, self.current)]
-        yield instant_power
-
-    def gen_voltage_line (self, data):
+def produce_window(measurement_queue, ser):
+    producer_logger = Logger()
+    producer_logger.set_warning()
+    while True:
+        measurement_buffer=ser.get_serial_data()
         try:
-            self.get_serial_data()
-        except ValueError:
-            self.unformatted_voltage = ''
-            self.unformatted_current = ''
-            self.unformatted_temperature = ''
-            self.unformatted_light = ''
+            measurement_queue.put(measurement_buffer, block=False)
+        except queue.Full:
+            print("[PRODUCER] WARNING: Measurement queue is full, dumping new measurement.")
+        except KeyboardInterrupt:
+            return
 
-        if (len(data) != self.number_of_samples):
-            print ('WARNING: Communication error!')
-            data = self.zeroes
-        line1.set_data(self.data_range, data)
-
-    def gen_current_line (self, data):
-        if (len(data) != self.number_of_samples):
-            print ('WARNING: Communication error!')
-            data = self.zeroes
-        line2.set_data(self.data_range, data)
-
-    def gen_temperature_line (self, data):
-        if (len(data) != self.number_of_samples):
-            print ('WARNING: Communication error!')
-            data = self.zeroes
-        line3.set_data(self.data_range, data)
-        
-    #def gen_light_line (self, data):
-    #    if (len(data) != self.number_of_samples):
-    #        print ('WARNING: Communication error!')
-    #        data = self.zeroes
-    #    line4.set_data(self.data_range, data)
+def consume_reading(measurement_queue, num_sensors):
+    consumer_logger = Logger()
+    consumer_logger.set_warning()
+    server_addr=("localhost", 25565)
+    serial_server = socket.socket()
+    serial_server.bind(server_addr)
+    serial_server.listen()
+    conn, addr = serial_server.accept()
+    print(f"[CONSUMER] INFO: Connected to {addr}")
+    while True:
+        try:
+            measurement_buffer = measurement_queue.get(block=True, timeout=0.1)
+            measurement_queue.task_done()
+        except queue.Empty:
+            print("[CONSUMER] WARNING: Measurement readings are out of sync.")
+            measurement_buffer = numpy.zeros(num_sensors)
+        except KeyboardInterrupt:
+            return
+        #print("[CONSUMER] INFO: Readings")
+        try:
+            measurement_string="<"
+            for measurement in measurement_buffer:
+                measurement_string+="|{:.2f}|".format(measurement)
+            measurement_string+=">"
+            conn.sendall(measurement_string.encode("utf-8"))
+        except:
+            exit(1)
+    serial_server.close()
 
 if __name__ == "__main__":
-    # my_osc = Oscilloscope()
-    # print ('Started monitor.')
-    # fig, ((ax1, ax2), (ax3,ax4)) = plot.subplots(2,2)
-    
-    # line1, = ax1.plot(my_osc.data_range, my_osc.zeroes)
-    
-    # line2, = ax2.plot(my_osc.data_range, my_osc.zeroes)
-    
-    # line3, = ax3.plot(my_osc.data_range, my_osc.zeroes)
-    
-    # line4, = ax4.plot(my_osc.data_range, my_osc.zeroes)
-    
-    # ax1.set_xlim(0, 400)
-    # ax1.set_ylim(-1, 1100)
-    # ax1.set_title('Tensão (V)')
-    
-    # ax2.set_xlim(0, 400)
-    # ax2.set_ylim(-1, 1100)
-    # ax2.set_title('Corrente (A)')
-    
-    # ax3.set_xlim(0, 400)
-    # ax3.set_ylim(-1, 1100)
-    # ax3.set_title('Potência instantânea (W)')
-
-    # ani1 = animation.FuncAnimation(fig=fig, func=my_osc.gen_voltage_line, frames=my_osc.get_voltage, interval=50)
-    # ani2 = animation.FuncAnimation(fig=fig, func=my_osc.gen_current_line, frames=my_osc.get_current, interval=50)
-    # ani3 = animation.FuncAnimation(fig=fig, func=my_osc.gen_temperature_line, frames=my_osc.get_temperature, interval=50)
-
-    #plot.show()
-
     config={
         'port' : "COM10",
         'baud' : 115200,
+        'adc_res' : 10,
         'aref' : 5.15,
-        'sensors' : 16,
+        'sensors' : 2,
         'samples' : 1024
     }
-    my_osc = Oscilloscope(config)
-    while True:
-        start_time = time.time()
-        my_osc.get_serial_data()
-        print(f"{start_time-time.time()}")
+    # Create two threads one for serial comm and one for oscilloscope
+    #   These threads will communicate through a queue that contains buffers
+    #       Each buffer has a 16x1024 window
+    #   Ideally one item should be put and consumed every 0.1s
+    #   Queue must warn if more than one buffer is present
+    #       Queue can store a max of 10 windows
+    window_queue = queue.Queue(1024)
+    serial_reader = Oscilloscope(config)
+    try:
+        producer_thread = threading.Thread(target=produce_window, name="producer_thread", args=(window_queue, serial_reader))
+        consumer_thread = threading.Thread(target=consume_reading, name="consumer_thread", args=(window_queue, serial_reader.num_sensors))
+    except Exception as e:
+        print("[MAIN] ERROR: Could not create threads")
+        e.with_traceback()
+    producer_thread.start()
+    consumer_thread.start()
+    window_queue.join()
 
     #print(my_osc.sample_buffer)
     #exit(0)
