@@ -43,9 +43,7 @@ class Oscilloscope ():
     def __init__ (self, config):
         self.port = config['port']
         self.baud = config['baud']
-        self.voltage_ref = config['aref']
         self.num_sensors = config['sensors']
-        self.ADC_resolution = 2**config['adc_res'] - 1
         self.sample_buffer = numpy.zeros(self.num_sensors)
         self.logger = Logger()
         self.logger.set_warning()
@@ -67,8 +65,7 @@ class Oscilloscope ():
                 self.logger.debug(f"Recieved {data}")
                 data = numpy.array(data)
                 for i in range(self.num_sensors):
-                    analog_value = float( (int(data[i])*self.voltage_ref) / self.ADC_resolution)
-                    self.sample_buffer[i] = analog_value
+                    self.sample_buffer[i] = int(data[i])
                 success_read = True
             except:
                 success_read = False
@@ -108,10 +105,12 @@ def consume_reading(measurement_queue, num_sensors):
         try:
             measurement_string="<"
             for measurement in measurement_buffer:
-                measurement_string+="|{:.2f}|".format(measurement)
+                measurement_int = int(measurement)
+                measurement_string+=f"|{measurement_int:04d}|"
             measurement_string+=">"
             conn.sendall(measurement_string.encode("utf-8"))
         except:
+            print("[CONSUMER] ERROR: Could not send message on socket.")
             exit(1)
     serial_server.close()
 
@@ -120,7 +119,6 @@ if __name__ == "__main__":
         'port' : "COM10",
         'baud' : 115200,
         'adc_res' : 10,
-        'aref' : 5.15,
         'sensors' : 2,
         'samples' : 1024
     }
