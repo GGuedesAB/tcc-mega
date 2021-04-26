@@ -9,7 +9,17 @@ import queue
 import threading
 import logging
 import socket
+import argparse
 
+def arg_parser():
+    parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
+    parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
+    parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
+    parser.add_argument('--baud', help='Baud rate of serial connection', type=int, default=115200)
+    args = parser.parse_args()
+    return args
+
+# Create a new module for Logger
 class Logger ():
     def __init__ (self):
         self.log_format = "[%(name)s] %(levelname)s: %(message)s"
@@ -50,6 +60,7 @@ class Oscilloscope ():
         self.sample = 0
         try:
             self.ser = serial.Serial(port=self.port, baudrate=self.baud)
+            self.connected=True
         except:
             self.logger.error ('Could not connect to serial port ' + self.port)
 
@@ -59,11 +70,24 @@ class Oscilloscope ():
         while not success_read:
             try:
                 data = self.ser.read_until('\n'.encode('utf-8'))
+            except serial.SerialException:
+                self.logger.error ('Lost connection on port ' + self.port)
+                self.connected = False
+                # If connection is lost, will keep trying to reconnect
+                while not self.connected:
+                    try:
+                        self.ser = serial.Serial(port=self.port, baudrate=self.baud)
+                        self.connected=True
+                        self.logger.warning ('Re-gained connection on port ' + self.port)
+                    except serial.SerialException:
+                        self.connected = False
+            try:
                 data = data.decode('utf-8')
                 data = data.rsplit('|')
                 data.remove('\r\n')
                 self.logger.debug(f"Recieved {data}")
                 data = numpy.array(data)
+                data = numpy.flip(data)
                 for i in range(self.num_sensors):
                     self.sample_buffer[i] = int(data[i])
                 success_read = True
@@ -91,13 +115,13 @@ def consume_reading(measurement_queue, num_sensors):
     serial_server.bind(server_addr)
     serial_server.listen()
     conn, addr = serial_server.accept()
-    print(f"[CONSUMER] INFO: Connected to {addr}")
+    print(f"[COMM] INFO: Connected to {addr}")
     while True:
         try:
             measurement_buffer = measurement_queue.get(block=True, timeout=0.1)
             measurement_queue.task_done()
         except queue.Empty:
-            print("[CONSUMER] WARNING: Measurement readings are out of sync.")
+            print("[COMM] WARNING: Measurement readings are out of sync.")
             measurement_buffer = numpy.zeros(num_sensors)
         except KeyboardInterrupt:
             return
@@ -110,17 +134,15 @@ def consume_reading(measurement_queue, num_sensors):
             measurement_string+=">"
             conn.sendall(measurement_string.encode("utf-8"))
         except:
-            print("[CONSUMER] ERROR: Could not send message on socket.")
-            exit(1)
+            print("[COMM] ERROR: Could not send message on socket.")
     serial_server.close()
 
 if __name__ == "__main__":
+    args=arg_parser()
     config={
-        'port' : "COM10",
-        'baud' : 115200,
-        'adc_res' : 10,
-        'sensors' : 2,
-        'samples' : 1024
+        'port' : args.port,
+        'baud' : args.baud,
+        'sensors' : args.nsensors,
     }
     # Create two threads one for serial comm and one for oscilloscope
     #   These threads will communicate through a queue that contains buffers
