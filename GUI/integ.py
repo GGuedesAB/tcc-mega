@@ -168,7 +168,10 @@ if __name__ == "__main__":
             conn, addr = serial_server.accept()
             gui_monitor_logger.info(f"Connected to {addr}")
         except socket.timeout:
-            serial_read_subproc.send_signal(signal.SIGINT)
+            if sys.platform == "win32":
+                serial_read_subproc.kill()
+            else:
+                serial_read_subproc.send_signal(signal.SIGINT)
         poll = serial_read_subproc.poll()
         while poll is not None:
             gui_monitor_logger.debug("Waiting subprocess to die")
@@ -198,7 +201,10 @@ if __name__ == "__main__":
         make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion)
         stop_threads[0]=True
         retriever_thread.join()
-        serial_read_subproc.send_signal(signal.SIGINT)
+        if sys.platform == "win32":
+            serial_read_subproc.kill()
+        else:
+            serial_read_subproc.send_signal(signal.SIGINT)
         poll = serial_read_subproc.poll()
         while poll is not None:
             time.sleep(1)
