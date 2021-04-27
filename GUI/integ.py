@@ -26,7 +26,7 @@ parser.add_argument('--nsensors', help='Number of sensors that will be monitored
 parser.add_argument('--port', help='Serial port name to connect', type=str, required=True)
 parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
 parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
-parser.add_argument('-v', '--verbose', help='Outputs all messages', action='store_true')
+parser.add_argument('--verbose', help='Outputs all messages', action='store_true')
 parser.add_argument('--virtual', help="Create virtual serial connection", action='store_true')
 args = parser.parse_args()
 
