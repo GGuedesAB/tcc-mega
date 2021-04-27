@@ -26,6 +26,7 @@ parser.add_argument('--nsensors', help='Number of sensors that will be monitored
 parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
 parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
 parser.add_argument('-v', '--verbose', help='Outputs all messages', action='store_true')
+parser.add_argument('--virtual', help="Create virtual serial connection", action='store_true')
 args = parser.parse_args()
 
 def retrieve_measurement_data(data_queue, nsensors, stop):
@@ -141,7 +142,10 @@ if __name__ == "__main__":
         gui_monitor_logger.set_error()
     python_interp=sys.executable
     inter_path=os.path.dirname(os.path.realpath(__file__))
-    serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", "COM10", "--nsensors", str(nsensors)]
+    if args.virtual:
+        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"virtual_sensor.py"), "--port", "dummy", "--nsensors", str(nsensors)]
+    else:
+        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", "COM10", "--nsensors", str(nsensors)]
     if args.verbose:
         serial_monitor_cmd.append("--verbose")
     stop_threads=[False]
