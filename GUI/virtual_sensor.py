@@ -96,7 +96,7 @@ def consume_reading(measurement_queue, num_sensors):
         consumer_logger.set_debug()
     else:
         consumer_logger.set_error()
-    server_addr=("localhost", 25565)
+    server_addr=('localhost', 25565)
     serial_server = socket.socket()
     serial_server.bind(server_addr)
     serial_server.listen()

@@ -36,7 +36,7 @@ def retrieve_measurement_data(data_queue, nsensors, stop):
         retriever_logger.set_debug()
     else:
         retriever_logger.set_error()
-    connection_addr=("localhost", 25565)
+    connection_addr=('localhost', 25565)
     try:
         data_socket = socket.socket()
         data_socket.connect(connection_addr)
