@@ -1,4 +1,5 @@
 import serial
+import serial.tools.list_ports
 import numpy
 import os
 import sys
@@ -33,13 +34,18 @@ class Oscilloscope ():
         if args.verbose:
             self.logger.set_debug()
         else:
-            self.logger.set_error()
+            self.logger.set_info()
         self.sample = 0
         try:
             self.ser = serial.Serial(port=self.port, baudrate=self.baud)
             self.connected=True
         except:
             self.logger.error ('Could not connect to serial port ' + self.port)
+            available_ports = serial.tools.list_ports.comports()
+            self.logger.info (f"List of available ports")
+            for p in available_ports:
+                self.logger.info (f"\t{p}")
+            exit(1)
 
     # Returns a copy of the object's internal buffer
     def get_serial_data (self):
@@ -48,7 +54,7 @@ class Oscilloscope ():
             try:
                 data = self.ser.read_until('\n'.encode('utf-8'))
             except serial.SerialException:
-                self.logger.error ('Lost connection on port ' + self.port)
+                self.logger.warning ('Lost connection on port ' + self.port)
                 self.connected = False
                 # If connection is lost, will keep trying to reconnect
                 while not self.connected:

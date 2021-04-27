@@ -23,6 +23,7 @@ V_A=1
 
 parser = argparse.ArgumentParser(description='Interprets and plots results given by the Arduino.')
 parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
+parser.add_argument('--port', help='Serial port name to connect', type=str, required=True)
 parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
 parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
 parser.add_argument('-v', '--verbose', help='Outputs all messages', action='store_true')
@@ -140,12 +141,13 @@ if __name__ == "__main__":
         gui_monitor_logger.set_debug()
     else:
         gui_monitor_logger.set_error()
+    port=args.port
     python_interp=sys.executable
     inter_path=os.path.dirname(os.path.realpath(__file__))
     if args.virtual:
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"virtual_sensor.py"), "--port", "dummy", "--nsensors", str(nsensors)]
     else:
-        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", "COM10", "--nsensors", str(nsensors)]
+        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(nsensors)]
     if args.verbose:
         serial_monitor_cmd.append("--verbose")
     stop_threads=[False]
@@ -154,6 +156,10 @@ if __name__ == "__main__":
             serial_read_subproc = subprocess.Popen(serial_monitor_cmd)
         except subprocess.CalledProcessError as err:
             gui_monitor_logger.error(err.stderr.decode("utf-8"))
+            exit(1)
+        time.sleep(2)
+        poll = serial_read_subproc.poll()
+        if poll is not None:
             exit(1)
         # This means we may a maximum of 5 minutes of measurement buffering in the queue
         # Measurements arrive every 0.1s
