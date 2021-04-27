@@ -51,11 +51,13 @@ def retrieve_measurement_data(data_queue, nsensors, stop):
             data_string = decoded_data.replace("<|", "")
             data_string = data_string.replace("|>", "")
             serialized_data_list = data_string.split("||")
-            data_list = [int (x) for x in serialized_data_list]
             try:
+                data_list = [int (x) for x in serialized_data_list]
                 data_queue.put(data_list, block=False)
             except queue.Full:
                 retriever_logger.warning("Data queue is full, dumping new measurements")
+            except ValueError:
+                pass
         except ConnectionResetError:
             pass
 
