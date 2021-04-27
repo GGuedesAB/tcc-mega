@@ -144,6 +144,8 @@ if __name__ == "__main__":
     python_interp=sys.executable
     inter_path=os.path.dirname(os.path.realpath(__file__))
     if args.virtual:
+        gui_monitor_logger.error("Virtual sensor is not supported yet")
+        exit(1)
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"virtual_sensor.py"), "--port", "dummy", "--nsensors", str(nsensors)]
     else:
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(nsensors)]
