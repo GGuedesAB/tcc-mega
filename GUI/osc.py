@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(description='Serial monitor script. Creates a s
 parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
 parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
 parser.add_argument('--baud', help='Baud rate of serial connection', type=int, default=115200)
-parser.add_argument('-v', '--verbose', help='Outputs all messages', action='store_true')
+parser.add_argument('--verbose', help='Outputs all messages', action='store_true')
 args = parser.parse_args()
 
 class Oscilloscope ():
@@ -98,7 +98,7 @@ def consume_reading(measurement_queue, num_sensors):
         consumer_logger.set_debug()
     else:
         consumer_logger.set_error()
-    server_addr=("localhost", 25565)
+    server_addr=('', 25565)
     serial_server = socket.socket()
     serial_server.bind(server_addr)
     serial_server.listen()
