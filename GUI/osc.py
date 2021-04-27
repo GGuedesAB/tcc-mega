@@ -5,13 +5,11 @@ import os
 import sys
 import matplotlib.pyplot as plot
 import matplotlib.animation as animation
-import time
-import subprocess
 import queue
 import threading
-import logging
 import socket
 import argparse
+import signal
 inter_path=os.path.dirname(os.path.realpath(__file__))
 sys.path.append(inter_path)
 from logger import Logger
@@ -47,6 +45,9 @@ class Oscilloscope ():
                 self.logger.info (f"\t{p}")
             exit(1)
 
+    def close (self):
+        self.ser.close()
+
     # Returns a copy of the object's internal buffer
     def get_serial_data (self):
         success_read = False
@@ -77,22 +78,23 @@ class Oscilloscope ():
                 success_read = False
         return numpy.copy(self.sample_buffer)
 
-def produce_window(measurement_queue, ser):
+def produce_window(measurement_queue, ser, stop):
     producer_logger = Logger("SOCKET-PUT")
     if args.verbose:
         producer_logger.set_debug()
     else:
         producer_logger.set_error()
-    while True:
+    while not stop[0]:
         measurement_buffer=ser.get_serial_data()
         try:
             measurement_queue.put(measurement_buffer, block=False)
         except queue.Full:
             producer_logger.warning("Measurement queue is full, dumping new measurements")
-        except KeyboardInterrupt:
-            return
+    ser.close()
+    producer_logger.debug("Bye")
+    exit(0)
 
-def consume_reading(measurement_queue, num_sensors):
+def consume_reading(measurement_queue, num_sensors, stop):
     consumer_logger = Logger("SOCKET-SEND")
     if args.verbose:
         consumer_logger.set_debug()
@@ -101,19 +103,21 @@ def consume_reading(measurement_queue, num_sensors):
     connection_addr=('localhost', 25565)
     try:
         data_socket = socket.socket()
+        data_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         data_socket.connect(connection_addr)
     except socket.timeout:
         consumer_logger.error("Could not connect")
-        exit(1)
-    while True:
+        return
+    except ConnectionRefusedError:
+        consumer_logger.error("Could not connect")
+        return
+    while not stop[0]:
         try:
             measurement_buffer = measurement_queue.get(block=True, timeout=0.1)
             measurement_queue.task_done()
         except queue.Empty:
             consumer_logger.warning("Measurement readings are out of sync")
             measurement_buffer = numpy.zeros(num_sensors)
-        except KeyboardInterrupt:
-            return
         try:
             measurement_string="<"
             for measurement in measurement_buffer:
@@ -123,9 +127,13 @@ def consume_reading(measurement_queue, num_sensors):
             data_socket.send(measurement_string.encode("utf-8"))
         except:
             consumer_logger.error("Could not send message on socket")
+    data_socket.close()
+    consumer_logger.debug("Bye")
+    exit(0)
 
 if __name__ == "__main__":
-    oscilloscope_logger = Logger("OSC-MAIN")
+    stop_threads=[False]
+    oscilloscope_logger = Logger("OSC")
     if args.verbose:
         oscilloscope_logger.set_debug()
     else:
@@ -145,14 +153,23 @@ if __name__ == "__main__":
     window_queue = queue.Queue(1024)
     serial_reader = Oscilloscope(config)
     try:
-        producer_thread = threading.Thread(target=produce_window, name="producer_thread", args=(window_queue, serial_reader))
-        consumer_thread = threading.Thread(target=consume_reading, name="consumer_thread", args=(window_queue, serial_reader.num_sensors))
+        producer_thread = threading.Thread(target=produce_window, name="producer_thread", args=(window_queue, serial_reader, stop_threads))
+        consumer_thread = threading.Thread(target=consume_reading, name="consumer_thread", args=(window_queue, serial_reader.num_sensors, stop_threads))
     except Exception as e:
         oscilloscope_logger.error("Could not create threads")
-        e.with_traceback()
+        exit(1)
+    
+    def handler(signum, frame):
+        oscilloscope_logger.info("Killing threads")
+        stop_threads[0]=True
+        producer_thread.join()
+        consumer_thread.join()
+        exit(0)
+    
+    signal.signal(signal.SIGINT, handler)
+
     producer_thread.start()
     consumer_thread.start()
+    producer_thread.join()
+    consumer_thread.join()
     window_queue.join()
-
-    #print(my_osc.sample_buffer)
-    #exit(0)

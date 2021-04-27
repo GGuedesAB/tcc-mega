@@ -4,14 +4,13 @@ import os
 import socket
 import queue
 import threading
-import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import csv
 import time
 import datetime
-import numpy
 import argparse
+import signal
 from itertools import count
 inter_path=os.path.dirname(os.path.realpath(__file__))
 sys.path.append(inter_path)
@@ -56,6 +55,7 @@ def retrieve_measurement_data(data_queue, nsensors, stop, data_socket):
             pass
         except ConnectionAbortedError:
             retriever_logger.warning("Server has closed the connection")
+    retriever_logger.debug("Bye")
 
 def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion):
     animation_logger=Logger("ANIMATION")
@@ -151,6 +151,7 @@ if __name__ == "__main__":
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(nsensors)]
     server_addr=('localhost', 25565)
     serial_server = socket.socket()
+    serial_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     serial_server.bind(server_addr)
     if args.verbose:
         serial_monitor_cmd.append("--verbose")
@@ -161,10 +162,18 @@ if __name__ == "__main__":
         except subprocess.CalledProcessError as err:
             gui_monitor_logger.error(err.stderr.decode("utf-8"))
             exit(1)
-        serial_server.listen(1)
-        conn, addr = serial_server.accept()
-        gui_monitor_logger.info(f"Connected to {addr}")
-        time.sleep(5)
+        try:
+            serial_server.settimeout(5)
+            serial_server.listen(1)
+            conn, addr = serial_server.accept()
+            gui_monitor_logger.info(f"Connected to {addr}")
+        except socket.timeout:
+            serial_read_subproc.send_signal(signal.SIGINT)
+        poll = serial_read_subproc.poll()
+        while poll is not None:
+            gui_monitor_logger.debug("Waiting subprocess to die")
+            time.sleep(1)
+            
         poll = serial_read_subproc.poll()
         if poll is not None:
             exit(1)
@@ -187,15 +196,17 @@ if __name__ == "__main__":
             os.makedirs(os.path.join(inter_path, "logs"))
         csv_file = open (os.path.join(inter_path, "logs", file_name), "w", newline="")
         make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion)
+        stop_threads[0]=True
+        retriever_thread.join()
+        serial_read_subproc.send_signal(signal.SIGINT)
+        poll = serial_read_subproc.poll()
+        while poll is not None:
+            time.sleep(1)
+            gui_monitor_logger.debug("Waiting subprocess to die")
         csv_file.close()
         conn.close()
         serial_server.close()
-        stop_threads[0]=True
-        serial_read_subproc.kill()
-    except KeyboardInterrupt:
-        gui_monitor_logger.warning("Please, close the running figure")
-        conn.close()
-        serial_server.close()
-        stop_threads[0]=True
-        serial_read_subproc.kill()
+        gui_monitor_logger.debug("Bye")
+    except:
+        exit(1)
     exit(0)
