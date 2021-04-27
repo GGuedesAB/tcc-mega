@@ -176,7 +176,9 @@ if __name__ == "__main__":
         ts = time.time()
         sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y-%M-%d_%H-%M-%S')
         file_name="log_"+sttime+".csv"
-        csv_file = open (os.path.join("logs", file_name), "w", newline="")
+        if not os.path.exists(os.path.join(inter_path, "logs")):
+            os.makedirs(os.path.join(inter_path, "logs"))
+        csv_file = open (os.path.join(inter_path, "logs", file_name), "w", newline="")
         make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion)
         csv_file.close()
         stop_threads[0]=True
