@@ -159,7 +159,7 @@ if __name__ == "__main__":
         except subprocess.CalledProcessError as err:
             gui_monitor_logger.error(err.stderr.decode("utf-8"))
             exit(1)
-        time.sleep(2)
+        time.sleep(5)
         poll = serial_read_subproc.poll()
         if poll is not None:
             exit(1)
