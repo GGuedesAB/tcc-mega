@@ -30,18 +30,12 @@ parser.add_argument('--verbose', help='Outputs all messages', action='store_true
 parser.add_argument('--virtual', help="Create virtual serial connection", action='store_true')
 args = parser.parse_args()
 
-def retrieve_measurement_data(data_queue, nsensors, stop):
+def retrieve_measurement_data(data_queue, nsensors, stop, data_socket):
     retriever_logger=Logger("SOCKET-RECV")
     if args.verbose:
         retriever_logger.set_debug()
     else:
         retriever_logger.set_error()
-    connection_addr=('localhost', 25565)
-    try:
-        data_socket = socket.socket()
-        data_socket.connect(connection_addr)
-    except socket.timeout:
-        retriever_logger.error("Could not connect")
     while not stop[0]:
         # Data comes in this format: <|ABCD||ABCD||...|>
         # NUMBER 4 here should be replaced by a variable
@@ -60,6 +54,8 @@ def retrieve_measurement_data(data_queue, nsensors, stop):
                 pass
         except ConnectionResetError:
             pass
+        except ConnectionAbortedError:
+            retriever_logger.warning("Server has closed the connection")
 
 def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion):
     animation_logger=Logger("ANIMATION")
@@ -99,9 +95,10 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion)
     def animate(i):
         try:
             # Animation is called every 50ms, wait, at max, more 50ms here
-            data_list = data_queue.get(block=True, timeout=0.05)
+            data_list = data_queue.get(block=True, timeout=0.1)
             data_queue.task_done()
         except queue.Empty:
+            animation_logger.warning("Did not recieve measurement data from socket. Replacing with 0's")
             data_list=[0]*nsensors
         ts = time.time()
         sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H:%M:%S.%f')[:-3]
@@ -150,6 +147,9 @@ if __name__ == "__main__":
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"virtual_sensor.py"), "--port", "dummy", "--nsensors", str(nsensors)]
     else:
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(nsensors)]
+    server_addr=('localhost', 25565)
+    serial_server = socket.socket()
+    serial_server.bind(server_addr)
     if args.verbose:
         serial_monitor_cmd.append("--verbose")
     stop_threads=[False]
@@ -159,6 +159,9 @@ if __name__ == "__main__":
         except subprocess.CalledProcessError as err:
             gui_monitor_logger.error(err.stderr.decode("utf-8"))
             exit(1)
+        serial_server.listen(1)
+        conn, addr = serial_server.accept()
+        gui_monitor_logger.info(f"Connected to {addr}")
         time.sleep(5)
         poll = serial_read_subproc.poll()
         if poll is not None:
@@ -170,7 +173,7 @@ if __name__ == "__main__":
         #   2) When the animation function is called to retrieve a frame
         data_queue = queue.Queue(3000)
         try:
-            retriever_thread = threading.Thread(target=retrieve_measurement_data, name="retriever_thread", args=(data_queue, nsensors, stop_threads))
+            retriever_thread = threading.Thread(target=retrieve_measurement_data, name="retriever_thread", args=(data_queue, nsensors, stop_threads, conn))
         except Exception as e:
             gui_monitor_logger.error("Could not create thread")
             e.with_traceback()
@@ -183,10 +186,14 @@ if __name__ == "__main__":
         csv_file = open (os.path.join(inter_path, "logs", file_name), "w", newline="")
         make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion)
         csv_file.close()
+        conn.close()
+        serial_server.close()
         stop_threads[0]=True
         serial_read_subproc.kill()
     except KeyboardInterrupt:
         gui_monitor_logger.warning("Please, close the running figure")
+        conn.close()
+        serial_server.close()
         stop_threads[0]=True
         serial_read_subproc.kill()
     exit(0)

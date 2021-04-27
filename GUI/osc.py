@@ -98,12 +98,13 @@ def consume_reading(measurement_queue, num_sensors):
         consumer_logger.set_debug()
     else:
         consumer_logger.set_error()
-    server_addr=('localhost', 25565)
-    serial_server = socket.socket()
-    serial_server.bind(server_addr)
-    serial_server.listen(1)
-    conn, addr = serial_server.accept()
-    consumer_logger.info(f"Connected to {addr}")
+    connection_addr=('localhost', 25565)
+    try:
+        data_socket = socket.socket()
+        data_socket.connect(connection_addr)
+    except socket.timeout:
+        consumer_logger.error("Could not connect")
+        exit(1)
     while True:
         try:
             measurement_buffer = measurement_queue.get(block=True, timeout=0.1)
@@ -119,7 +120,7 @@ def consume_reading(measurement_queue, num_sensors):
                 measurement_int = int(measurement)
                 measurement_string+=f"|{measurement_int:04d}|"
             measurement_string+=">"
-            conn.sendall(measurement_string.encode("utf-8"))
+            data_socket.send(measurement_string.encode("utf-8"))
         except:
             consumer_logger.error("Could not send message on socket")
 
