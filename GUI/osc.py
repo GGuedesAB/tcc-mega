@@ -1,6 +1,7 @@
 import serial
 import numpy
 import os
+import sys
 import matplotlib.pyplot as plot
 import matplotlib.animation as animation
 import time
@@ -10,44 +11,17 @@ import threading
 import logging
 import socket
 import argparse
+inter_path=os.path.dirname(os.path.realpath(__file__))
+sys.path.append(inter_path)
+from logger import Logger
 
-def arg_parser():
-    parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
-    parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
-    parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
-    parser.add_argument('--baud', help='Baud rate of serial connection', type=int, default=115200)
-    args = parser.parse_args()
-    return args
 
-# Create a new module for Logger
-class Logger ():
-    def __init__ (self):
-        self.log_format = "[%(name)s] %(levelname)s: %(message)s"
-        self.date_format = '%d-%m-%Y %H:%M:%S'
-        self.logger = logging.getLogger(__name__)
-    def set_debug(self):
-        logging.basicConfig(level=logging.DEBUG, format=self.log_format, datefmt=self.date_format)
-
-    def set_info(self):
-        logging.basicConfig(level=logging.INFO, format=self.log_format, datefmt=self.date_format)
-
-    def set_warning(self):
-        logging.basicConfig(level=logging.WARNING, format=self.log_format, datefmt=self.date_format)
-
-    def set_error(self):
-        logging.basicConfig(level=logging.ERROR, format=self.log_format, datefmt=self.date_format)
-
-    def error(self, msg):
-        logging.error(msg)
-    
-    def debug(self, msg):
-        logging.debug(msg)
-
-    def info(self, msg):
-        logging.info(msg)
-
-    def warning(self, msg):
-        logging.warning(msg)
+parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
+parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
+parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
+parser.add_argument('--baud', help='Baud rate of serial connection', type=int, default=115200)
+parser.add_argument('-v', '--verbose', help='Outputs all messages', action='store_true')
+args = parser.parse_args()
 
 class Oscilloscope ():
     def __init__ (self, config):
@@ -55,8 +29,11 @@ class Oscilloscope ():
         self.baud = config['baud']
         self.num_sensors = config['sensors']
         self.sample_buffer = numpy.zeros(self.num_sensors)
-        self.logger = Logger()
-        self.logger.set_warning()
+        self.logger = Logger("SERIAL")
+        if args.verbose:
+            self.logger.set_debug()
+        else:
+            self.logger.set_error()
         self.sample = 0
         try:
             self.ser = serial.Serial(port=self.port, baudrate=self.baud)
@@ -85,7 +62,6 @@ class Oscilloscope ():
                 data = data.decode('utf-8')
                 data = data.rsplit('|')
                 data.remove('\r\n')
-                self.logger.debug(f"Recieved {data}")
                 data = numpy.array(data)
                 data = numpy.flip(data)
                 for i in range(self.num_sensors):
@@ -96,36 +72,41 @@ class Oscilloscope ():
         return numpy.copy(self.sample_buffer)
 
 def produce_window(measurement_queue, ser):
-    producer_logger = Logger()
-    producer_logger.set_warning()
+    producer_logger = Logger("SOCKET-PUT")
+    if args.verbose:
+        producer_logger.set_debug()
+    else:
+        producer_logger.set_error()
     while True:
         measurement_buffer=ser.get_serial_data()
         try:
             measurement_queue.put(measurement_buffer, block=False)
         except queue.Full:
-            print("[PRODUCER] WARNING: Measurement queue is full, dumping new measurement.")
+            producer_logger.warning("Measurement queue is full, dumping new measurements")
         except KeyboardInterrupt:
             return
 
 def consume_reading(measurement_queue, num_sensors):
-    consumer_logger = Logger()
-    consumer_logger.set_warning()
+    consumer_logger = Logger("SOCKET-SEND")
+    if args.verbose:
+        consumer_logger.set_debug()
+    else:
+        consumer_logger.set_error()
     server_addr=("localhost", 25565)
     serial_server = socket.socket()
     serial_server.bind(server_addr)
     serial_server.listen()
     conn, addr = serial_server.accept()
-    print(f"[COMM] INFO: Connected to {addr}")
+    consumer_logger.info(f"Connected to {addr}")
     while True:
         try:
             measurement_buffer = measurement_queue.get(block=True, timeout=0.1)
             measurement_queue.task_done()
         except queue.Empty:
-            print("[COMM] WARNING: Measurement readings are out of sync.")
+            consumer_logger.warning("Measurement readings are out of sync")
             measurement_buffer = numpy.zeros(num_sensors)
         except KeyboardInterrupt:
             return
-        #print("[CONSUMER] INFO: Readings")
         try:
             measurement_string="<"
             for measurement in measurement_buffer:
@@ -134,16 +115,20 @@ def consume_reading(measurement_queue, num_sensors):
             measurement_string+=">"
             conn.sendall(measurement_string.encode("utf-8"))
         except:
-            print("[COMM] ERROR: Could not send message on socket.")
-    serial_server.close()
+            consumer_logger.error("Could not send message on socket")
 
 if __name__ == "__main__":
-    args=arg_parser()
+    oscilloscope_logger = Logger("OSC-MAIN")
+    if args.verbose:
+        oscilloscope_logger.set_debug()
+    else:
+        oscilloscope_logger.set_error()
     config={
         'port' : args.port,
         'baud' : args.baud,
         'sensors' : args.nsensors,
     }
+    oscilloscope_logger.debug(f"Starting serial communication with: {config}")
     # Create two threads one for serial comm and one for oscilloscope
     #   These threads will communicate through a queue that contains buffers
     #       Each buffer has a 16x1024 window
@@ -156,7 +141,7 @@ if __name__ == "__main__":
         producer_thread = threading.Thread(target=produce_window, name="producer_thread", args=(window_queue, serial_reader))
         consumer_thread = threading.Thread(target=consume_reading, name="consumer_thread", args=(window_queue, serial_reader.num_sensors))
     except Exception as e:
-        print("[MAIN] ERROR: Could not create threads")
+        oscilloscope_logger.error("Could not create threads")
         e.with_traceback()
     producer_thread.start()
     consumer_thread.start()

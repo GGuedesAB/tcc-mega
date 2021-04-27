@@ -13,26 +13,33 @@ import datetime
 import numpy
 import argparse
 from itertools import count
+inter_path=os.path.dirname(os.path.realpath(__file__))
+sys.path.append(inter_path)
+from logger import Logger
 
 R1=1
 R2=4.4
 V_A=1
 
-def arg_parser():
-    parser = argparse.ArgumentParser(description='Interprets and plots results given by the Arduino.')
-    parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
-    parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
-    parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
-    args = parser.parse_args()
-    return args
+parser = argparse.ArgumentParser(description='Interprets and plots results given by the Arduino.')
+parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
+parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
+parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
+parser.add_argument('-v', '--verbose', help='Outputs all messages', action='store_true')
+args = parser.parse_args()
 
 def retrieve_measurement_data(data_queue, nsensors, stop):
+    retriever_logger=Logger("SOCKET-RECV")
+    if args.verbose:
+        retriever_logger.set_debug()
+    else:
+        retriever_logger.set_error()
     connection_addr=("localhost", 25565)
     try:
         data_socket = socket.socket()
         data_socket.connect(connection_addr)
     except socket.timeout:
-        print("ERROR: Could not connect")
+        retriever_logger.error("Could not connect")
     while not stop[0]:
         # Data comes in this format: <|ABCD||ABCD||...|>
         # NUMBER 4 here should be replaced by a variable
@@ -46,11 +53,16 @@ def retrieve_measurement_data(data_queue, nsensors, stop):
             try:
                 data_queue.put(data_list, block=False)
             except queue.Full:
-                print("Data queue is full")
+                retriever_logger.warning("Data queue is full, dumping new measurements")
         except ConnectionResetError:
             pass
 
 def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion):
+    animation_logger=Logger("ANIMATION")
+    if args.verbose:
+        animation_logger.set_debug()
+    else:
+        animation_logger.set_error()
     x_vals={}
     y_vals={}
     for sensor in range(nsensors):
@@ -114,24 +126,30 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion)
             line.set_data(x_vals[sensor_id][row], y_vals[sensor_id][row])
         return lines
 
-    anim=animation.FuncAnimation(fig, animate, blit=True, cache_frame_data=False, interval=50)
+    anim=animation.FuncAnimation(fig, animate, blit=True, cache_frame_data=False, interval=10)
     plt.show()
 
 if __name__ == "__main__":
-    args=arg_parser()
     nsensors=args.nsensors
     aref_voltage=args.aref
     adc_bits=args.adc_resolution
     adc_resoltuion=(2**adc_bits)-1
+    gui_monitor_logger=Logger("MONITOR")
+    if args.verbose:
+        gui_monitor_logger.set_debug()
+    else:
+        gui_monitor_logger.set_error()
     python_interp=sys.executable
     inter_path=os.path.dirname(os.path.realpath(__file__))
     serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", "COM10", "--nsensors", str(nsensors)]
+    if args.verbose:
+        serial_monitor_cmd.append("--verbose")
     stop_threads=[False]
     try:
         try:
             serial_read_subproc = subprocess.Popen(serial_monitor_cmd)
         except subprocess.CalledProcessError as err:
-            print("ERROR: " + err.stderr.decode("utf-8"))
+            gui_monitor_logger.error(err.stderr.decode("utf-8"))
             exit(1)
         # This means we may a maximum of 5 minutes of measurement buffering in the queue
         # Measurements arrive every 0.1s
@@ -142,7 +160,7 @@ if __name__ == "__main__":
         try:
             retriever_thread = threading.Thread(target=retrieve_measurement_data, name="retriever_thread", args=(data_queue, nsensors, stop_threads))
         except Exception as e:
-            print("[MAIN] ERROR: Could not create thread")
+            gui_monitor_logger.error("Could not create thread")
             e.with_traceback()
         retriever_thread.start()
         ts = time.time()
@@ -154,7 +172,7 @@ if __name__ == "__main__":
         stop_threads[0]=True
         serial_read_subproc.kill()
     except KeyboardInterrupt:
-        print("[MAIN] WARNING: Please, close the running figure.")
+        gui_monitor_logger.warning("Please, close the running figure")
         stop_threads[0]=True
         serial_read_subproc.kill()
     exit(0)
