@@ -10,10 +10,13 @@ import threading
 import socket
 import argparse
 import signal
+import time
 inter_path=os.path.dirname(os.path.realpath(__file__))
 sys.path.append(inter_path)
 from logger import Logger
 
+# In seconds
+SAMPLING_PERIOD=1
 
 parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
 parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
@@ -84,6 +87,9 @@ def produce_window(measurement_queue, ser, stop):
         producer_logger.set_debug()
     else:
         producer_logger.set_error()
+    # Discard first 1 measurements
+    for i in range(1):
+        measurement_buffer=ser.get_serial_data()
     while not stop[0]:
         measurement_buffer=ser.get_serial_data()
         try:
@@ -113,7 +119,7 @@ def consume_reading(measurement_queue, num_sensors, stop):
         return
     while not stop[0]:
         try:
-            measurement_buffer = measurement_queue.get(block=True, timeout=0.1)
+            measurement_buffer = measurement_queue.get(block=True, timeout=SAMPLING_PERIOD)
             measurement_queue.task_done()
         except queue.Empty:
             consumer_logger.warning("Measurement readings are out of sync")
