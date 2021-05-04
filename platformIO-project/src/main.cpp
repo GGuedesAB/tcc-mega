@@ -3,9 +3,12 @@
 bool measurement_ready = false;
 bool ready_to_send = false;
 uint8_t manual_tim2_prescaler = 0;
+uint8_t is_next = 0;
+uint8_t measurements_A_B = 0;
+char control_A_B = 'A';
 uint16_t conversions = 0;
 uint16_t single_measurement = 0;
-uint16_t chan = 0;
+uint16_t chan = 8;
 ADC_RESULT matrix_measurement;
 
 bool ADC_RESULT::is_empty () {
@@ -57,6 +60,7 @@ void ADC_RESULT::serial_transaction (){
 
 void setup() {
     Serial.begin(115200);
+    // Measure 4 times and change
     pinMode(A0, INPUT);
     pinMode(A1, INPUT);
     pinMode(A2, INPUT);
@@ -65,24 +69,35 @@ void setup() {
     pinMode(A5, INPUT);
     pinMode(A6, INPUT);
     pinMode(A7, INPUT);
+    // Measure Vref_A
     pinMode(A8, INPUT);
+    // Measure Vref_B
     pinMode(A9, INPUT);
-    pinMode(A10, INPUT);
-    pinMode(A11, INPUT);
-    pinMode(A12, INPUT);
-    pinMode(A13, INPUT);
-    pinMode(A14, INPUT);
-    pinMode(A15, INPUT);
+
+    // A control line
+    // The word order is {5 4 3 2 <- [LSB]} and will be varied in a counting style (0000, 0001, 0010, 00011, ...)
+    pinMode(2, OUTPUT);
+    pinMode(3, OUTPUT);
+    pinMode(4, OUTPUT);
+    pinMode(5, OUTPUT);
+
+    // B control line
+    // The word order is {9 8 7 6 <- [LSB]} and will be varied in a counting style (0000, 0001, 0010, 00011, ...)
+    pinMode(6, OUTPUT);
+    pinMode(7, OUTPUT);
+    pinMode(8, OUTPUT);
+    pinMode(9, OUTPUT);
+
     delay(200);
     first_setup();
 }
 
 void loop() {
-    // Execution should halt here until conversion is done
-    change_analog_in(chan & 0xF);
     if (measurement_ready) {
         noInterrupts();
-        ++chan;
+        chan = next_chan(chan);
+        change_analog_in(chan & 0xF);
+        next_mux();
         matrix_measurement.push_value(single_measurement);
         interrupts();
         measurement_ready = false;
@@ -93,6 +108,7 @@ void loop() {
         interrupts();
         ready_to_send = false;
     } else if (!matrix_measurement.is_full()) {
+        // Execution halts here until conversion is done
         // Starts new conversion
         make_conversion();
     }
@@ -140,8 +156,43 @@ void first_setup () {
     interrupts();
 }
 
+uint8_t next_chan (uint8_t chan) {
+    if (is_next == 3 || chan > 7) {
+        is_next = 0;
+        ++chan;
+    } else {
+        ++is_next;
+    }
+    // Only analog inputs up to A9 will be used
+    return chan % 10;
+}
+
+inline void next_mux () {
+    // Only channels 0 to 7, that measure matrix sensors, need this multiplexing logic
+    if (chan < 8) {
+        // Create logic to multiplex line/col for A and B (they can be the same, since we will do a RR)
+        if (measurements_A_B == 16) {
+            measurements_A_B = 0;
+            control_A_B = (control_A_B == 'A') ? 'B' : 'A';
+        }
+        uint8_t i = 0;
+        if (control_A_B == 'A') {
+            // 2,3,4,5
+            for (i=0; i<4; i++) {
+                digitalWrite(i+2, ((measurements_A_B & (1<<i)) == 0) ? LOW : HIGH);
+            }
+        } else {
+            // 6,7,8,9
+            for (i=0; i<4; i++) {
+                digitalWrite(i+6, ((measurements_A_B & (1<<i)) == 0) ? LOW : HIGH);
+            }
+        }
+        ++measurements_A_B;
+    }
+}
+
 inline void change_analog_in (uint8_t chan) {
-    // Forces a round robin. It takes advantage of chan overflowing
+    // Forces a round robin
     uint8_t high_ADMUX = ADMUX & 0xF0;
     if (chan < 8) {
         chan = chan & 0x07;
@@ -166,8 +217,8 @@ ISR(ADC_vect) {
 
 ISR(TIMER2_COMPA_vect) {
     ++manual_tim2_prescaler;
-    // Makes 6 16ms interrupts -> 0.096s ~ 0.1s
-    if (manual_tim2_prescaler == 6) {
+    // Makes 60 16ms interrupts -> 960ms
+    if (manual_tim2_prescaler == 60) {
         ready_to_send = true;
         manual_tim2_prescaler = 0;
     }

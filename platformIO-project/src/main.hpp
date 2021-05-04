@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <avr/sleep.h>
-#define N_SENSORS 16
+#define N_SENSORS 34
 
 class ADC_RESULT {
   uint16_t data [N_SENSORS];
@@ -18,4 +18,6 @@ class ADC_RESULT {
 
 void first_setup ();
 inline void change_analog_in (uint8_t chan);
+uint8_t next_chan (uint8_t chan);
+inline void next_mux ();
 inline void make_conversion ();
