@@ -82,17 +82,17 @@ def retrieve_measurement_data(data_queue, aref_voltage, adc_resoltuion, stop, da
             iref[1]=iref_B
 
             if vref_A_old == 0 and vref_A_old != vref_A_new:
-                print(f"[VREF] INFO: VREF_A={calculated_vref_A}V")
-                print(f"             IREF_A={iref_A*10E6}uA")
+                print(f"[VREF] INFO: VREF_A = {calculated_vref_A:.3f} V")
+                print(f"             IREF_A = {iref_A*10E9:.0f} nA")
             if (vref_A_old != 0 and vref_A_old != vref_A_new) or (vref_B_old != 0 and vref_B_old != vref_B_new):
                 print(f"[VREF] WARNING: Fluctuation in VREF.")
-                print(f"                Current VREF_A={calculated_vref_A}V")
-                print(f"                Current IREF_A={iref_A*10E6}uA")
-                print(f"                Current VREF_B={calculated_vref_B}V")
-                print(f"                Current IREF_B={iref_B*10E6}uA")
+                print(f"                Current VREF_A = {calculated_vref_A:.3f} V")
+                print(f"                Current IREF_A = {iref_A*10E9:.0f} nA")
+                print(f"                Current VREF_B = {calculated_vref_B:.3f} V")
+                print(f"                Current IREF_B = {iref_B*10E9:.0f} nA")
             if vref_B_old == 0 and vref_B_old != vref_B_new:
-                print(f"[VREF] INFO: VREF_B={calculated_vref_B}V")
-                print(f"             IREF_B={iref_B*10E6}uA")
+                print(f"[VREF] INFO: VREF_B = {calculated_vref_B:.3f} V")
+                print(f"             IREF_B = {iref_B*10E9:.0f} nA")
             try:
                 data_list = [int (x) for x in serialized_data_list]
                 data_queue.put(data_list, block=False)
@@ -137,10 +137,10 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
     axes[0][1].set_title('Deposited resistor A')
     axes[0][2].set_title('Reference resistor B')
     axes[0][3].set_title('Deposited resistor B')
-    axes[1][0].set_ylabel("Resistance of sensors (Ohms)")
+    axes[1][0].set_ylabel("Resistance of sensors (kOhms)")
     lines=[]
-    smaller_measured_resistance=[200, 200, 200, 200]
-    biggest_measured_resistance=[500, 500, 500, 500]
+    smaller_measured_resistance=[50, 50, 50, 50]
+    biggest_measured_resistance=[100, 100, 100, 100]
     for row in range(2):
         for column in range(nsensors):
             lines.append(axes[row][column].plot([],[])[0])
@@ -196,7 +196,7 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
                 voltage_plot=(voltage_read+(R2/R1)*V_A)*(R1/(R1+R2))
                 text = f"{voltage_plot:.3f}"
                 y_vals[sensor_id][row].append(voltage_plot)
-                texts.append(axes[0][sensor_id].text(1, 1.05, text, horizontalalignment='right', verticalalignment='top', transform=axes[0][sensor_id].transAxes))
+                texts.append(axes[0][sensor_id].text(1, 1.05, text, fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axes[0][sensor_id].transAxes))
             # Resistance
             else:
                 x_vals[sensor_id][row].append(sample)
@@ -211,14 +211,16 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
                         resistance=(voltage_plot-vref[1])/iref[1]
                 except ZeroDivisionError:
                     resistance=0
+                # Show in kOhms
+                resistance = resistance/10E3
                 if resistance < 0:
                     animation_logger.debug("Negative resistance!")
                 text = f"{resistance:.3f}"
-                texts.append(axes[1][sensor_id].text(1, 1.05, text, horizontalalignment='right', verticalalignment='top', transform=axes[1][sensor_id].transAxes))
-                if smaller_measured_resistance[sensor_id] <= 200 or (resistance > 200 and resistance < smaller_measured_resistance[sensor_id]):
-                    smaller_measured_resistance[sensor_id] = resistance - 200
+                texts.append(axes[1][sensor_id].text(1, 1.05, text, fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axes[1][sensor_id].transAxes))
+                if smaller_measured_resistance[sensor_id] <= 50 or (resistance > 50 and resistance < smaller_measured_resistance[sensor_id]):
+                    smaller_measured_resistance[sensor_id] = resistance - 50
                 if resistance > biggest_measured_resistance[sensor_id]:
-                    biggest_measured_resistance[sensor_id] = resistance + 10E3
+                    biggest_measured_resistance[sensor_id] = resistance + 50
                 y_vals[sensor_id][row].append(resistance)
             axes[row][sensor_id].set_xlim(0, sample)
             axes[1][sensor_id].set_ylim(smaller_measured_resistance[sensor_id], biggest_measured_resistance[sensor_id])
