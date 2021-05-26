@@ -21,7 +21,7 @@ from logger import Logger
 R1=1
 R2=4.4
 V_A=1
-SAMPLING_PERIOD=1
+SAMPLING_PERIOD=34
 # 32 sensors in chip matrix + VREF_A + VREF_B
 MAX_SENSORS=34
 R_OF_IREF=200E3
@@ -227,7 +227,7 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
             line.set_data(x_vals[sensor_id][row], y_vals[sensor_id][row])
         return lines
 
-    anim=animation.FuncAnimation(fig, animate, blit=False, cache_frame_data=False, interval=800)
+    anim=animation.FuncAnimation(fig, animate, blit=False, cache_frame_data=False, interval=SAMPLING_PERIOD*10E3)
     plt.show()
 
 if __name__ == "__main__":
@@ -293,6 +293,7 @@ if __name__ == "__main__":
         #   1) When a measurement arrives from the socket
         #   2) When the animation function is called to retrieve a frame
         data_queue = queue.Queue(3000)
+        data_queue.put([0]*34)
         vref=[0, 0]
         iref=[0, 0]
         try:

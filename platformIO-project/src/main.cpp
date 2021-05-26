@@ -1,7 +1,8 @@
 #include "main.hpp"
 
-bool measurement_ready = false;
 bool ready_to_send = false;
+bool measurement_ready = false;
+bool make_next_measurement = true;
 uint8_t manual_tim2_prescaler = 0;
 uint8_t is_next = 0;
 uint8_t measurements_A_B = 0;
@@ -56,6 +57,7 @@ void ADC_RESULT::serial_transaction (){
         out_ptr += sprintf(out_ptr, "%04u|",pop_value());
     }
     Serial.println(output);
+    Serial.flush();
 }
 
 void setup() {
@@ -93,8 +95,19 @@ void setup() {
 }
 
 void loop() {
-    if (measurement_ready) {
+    if (make_next_measurement && !matrix_measurement.is_full()) {
+        // Execution halts here until conversion is done
+        // Starts new conversion
+        make_conversion();
+        make_next_measurement = false;
+    } else if (measurement_ready) {
         noInterrupts();
+        /*Serial.print(single_measurement);
+        Serial.print("@c:");
+        Serial.print(chan);
+        Serial.print("@mux:");
+        Serial.println(control_A_B);
+        Serial.flush();*/
         chan = next_chan(chan);
         change_analog_in(chan & 0xF);
         next_mux();
@@ -104,13 +117,8 @@ void loop() {
     } else if (ready_to_send) {
         noInterrupts();
         matrix_measurement.serial_transaction();
-        Serial.flush();
         interrupts();
         ready_to_send = false;
-    } else if (!matrix_measurement.is_full()) {
-        // Execution halts here until conversion is done
-        // Starts new conversion
-        make_conversion();
     }
 }
 
@@ -206,12 +214,13 @@ inline void change_analog_in (uint8_t chan) {
 }
 
 inline void make_conversion () {
+    measurement_ready=true;
     interrupts();
     sleep_cpu();
 }
 
 ISR(ADC_vect) {
-    measurement_ready = true;
+    ++conversions;
     single_measurement = ADC;
 }
 
@@ -219,8 +228,12 @@ ISR(TIMER2_COMPA_vect) {
     ++manual_tim2_prescaler;
     // Makes 60 16ms interrupts -> 960ms
     if (manual_tim2_prescaler == 60) {
-        ready_to_send = true;
+        make_next_measurement=true;
         manual_tim2_prescaler = 0;
+    }
+    if (conversions == 34) {
+        conversions = 0;
+        ready_to_send = true;
     }
     TCNT2 = 0;
 }
