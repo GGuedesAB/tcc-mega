@@ -21,7 +21,7 @@ from logger import Logger
 R1=1
 R2=4.4
 V_A=1
-SAMPLING_PERIOD=34
+SAMPLING_PERIOD=68
 # 32 sensors in chip matrix + VREF_A + VREF_B
 MAX_SENSORS=34
 R_OF_IREF=200E3

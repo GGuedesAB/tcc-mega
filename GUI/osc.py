@@ -16,7 +16,7 @@ sys.path.append(inter_path)
 from logger import Logger
 
 # In seconds
-SAMPLING_PERIOD=34
+SAMPLING_PERIOD=68
 
 parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
 parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)

@@ -102,12 +102,6 @@ void loop() {
         make_next_measurement = false;
     } else if (measurement_ready) {
         noInterrupts();
-        /*Serial.print(single_measurement);
-        Serial.print("@c:");
-        Serial.print(chan);
-        Serial.print("@mux:");
-        Serial.println(control_A_B);
-        Serial.flush();*/
         chan = next_chan(chan);
         change_analog_in(chan & 0xF);
         next_mux();
@@ -226,8 +220,8 @@ ISR(ADC_vect) {
 
 ISR(TIMER2_COMPA_vect) {
     ++manual_tim2_prescaler;
-    // Makes 60 16ms interrupts -> 960ms
-    if (manual_tim2_prescaler == 60) {
+    // Makes 124 16ms interrupts -> 1984ms
+    if (manual_tim2_prescaler == 124) {
         make_next_measurement=true;
         manual_tim2_prescaler = 0;
     }
