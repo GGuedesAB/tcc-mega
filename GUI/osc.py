@@ -16,7 +16,8 @@ sys.path.append(inter_path)
 from logger import Logger
 
 # In seconds
-SAMPLING_PERIOD=68
+DELTA=10
+SAMPLING_PERIOD=68+DELTA
 
 parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
 parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
@@ -87,9 +88,6 @@ def produce_window(measurement_queue, ser, stop):
         producer_logger.set_debug()
     else:
         producer_logger.set_error()
-    # Discard first 1 measurements
-    for i in range(1):
-        measurement_buffer=ser.get_serial_data()
     while not stop[0]:
         measurement_buffer=ser.get_serial_data()
         try:
