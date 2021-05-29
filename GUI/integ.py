@@ -21,7 +21,8 @@ from logger import Logger
 R1=1
 R2=4.4
 V_A=1
-SAMPLING_PERIOD=68
+DELTA=10
+SAMPLING_PERIOD=68+DELTA
 # 32 sensors in chip matrix + VREF_A + VREF_B
 MAX_SENSORS=34
 R_OF_IREF=200E3
@@ -227,7 +228,7 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
             line.set_data(x_vals[sensor_id][row], y_vals[sensor_id][row])
         return lines
 
-    anim=animation.FuncAnimation(fig, animate, blit=False, cache_frame_data=False, interval=SAMPLING_PERIOD*10E3)
+    anim=animation.FuncAnimation(fig, animate, blit=False, cache_frame_data=False, interval=(SAMPLING_PERIOD*10E3)/10)
     plt.show()
 
 if __name__ == "__main__":
