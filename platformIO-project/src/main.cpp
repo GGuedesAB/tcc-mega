@@ -106,12 +106,14 @@ void loop() {
         change_analog_in(chan & 0xF);
         next_mux();
         matrix_measurement.push_value(single_measurement);
+        ++conversions;
         interrupts();
         measurement_ready = false;
-    } else if (ready_to_send) {
+    } else if (conversions == 34) {
         noInterrupts();
         matrix_measurement.serial_transaction();
         interrupts();
+        conversions = 0;
         ready_to_send = false;
     }
 }
@@ -208,13 +210,12 @@ inline void change_analog_in (uint8_t chan) {
 }
 
 inline void make_conversion () {
-    measurement_ready=true;
     interrupts();
     sleep_cpu();
 }
 
 ISR(ADC_vect) {
-    ++conversions;
+    measurement_ready=true;
     single_measurement = ADC;
 }
 
@@ -224,10 +225,6 @@ ISR(TIMER2_COMPA_vect) {
     if (manual_tim2_prescaler == 124) {
         make_next_measurement=true;
         manual_tim2_prescaler = 0;
-    }
-    if (conversions == 34) {
-        conversions = 0;
-        ready_to_send = true;
     }
     TCNT2 = 0;
 }
