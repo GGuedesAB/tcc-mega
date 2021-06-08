@@ -33,7 +33,8 @@ parser.add_argument('--port', help='Serial port name to connect', type=str, requ
 parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
 parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
 parser.add_argument('--verbose', help='Outputs all messages', action='store_true')
-parser.add_argument('--virtual', help="Create virtual serial connection", action='store_true')
+parser.add_argument('--virtual', help='Create virtual serial connection', action='store_true')
+parser.add_argument('--calculate-values', help='Makes the calculations to find sensor resistance instead of using static formula', action='store_true')
 #parser.add_argument('--no-gui', help="Do not show GUI", action='store_true')
 args = parser.parse_args()
 
@@ -66,15 +67,17 @@ def retrieve_measurement_data(data_queue, aref_voltage, adc_resoltuion, stop, da
             # Calculate IREF
             vout_ref_A_1=int(serialized_data_list[2])
             vout_ref_A_2=int(serialized_data_list[5])
-            vout_ref_A_med=int((vout_ref_A_1+vout_ref_A_2)/2)
-            iref_A=int_to_voltage(vout_ref_A_med-vref_A_new, aref_voltage, adc_resoltuion)/R_OF_IREF
+            vout_ref_A_med=int_to_voltage(int((vout_ref_A_1+vout_ref_A_2)/2), aref_voltage, adc_resoltuion)
+            vout_ref_A_med=(vout_ref_A_med + (V_A*R2)/R1)*(R1/(R1+R2))
             calculated_vref_A=int_to_voltage(vref_A_new, aref_voltage, adc_resoltuion)
+            iref_A=(vout_ref_A_med - calculated_vref_A)/R_OF_IREF
 
             vout_ref_B_1=int(serialized_data_list[18])
             vout_ref_B_2=int(serialized_data_list[21])
-            vout_ref_B_med=int((vout_ref_B_1+vout_ref_B_2)/2)
-            iref_B=int_to_voltage(vout_ref_B_med-vref_B_new, aref_voltage, adc_resoltuion)/R_OF_IREF
+            vout_ref_B_med=int_to_voltage(int((vout_ref_B_1+vout_ref_B_2)/2), aref_voltage, adc_resoltuion)
+            vout_ref_B_med=(vout_ref_B_med + (V_A*R2)/R1)*(R1/(R1+R2))
             calculated_vref_B=int_to_voltage(vref_B_new, aref_voltage, adc_resoltuion)
+            iref_B=(vout_ref_B_med - calculated_vref_B)/R_OF_IREF
 
             # Output parameters
             vref[0]=calculated_vref_A
@@ -172,7 +175,27 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
         readings.extend(data_list)
         # VREF_A is taken as sensor0
         # VREF_B is taken as sensor1
-        writer.writerow(readings)
+        vref_a_float = int_to_voltage(readings[1], aref_voltage, adc_resoltuion)
+        vref_b_float = int_to_voltage(readings[2], aref_voltage, adc_resoltuion)
+        transformed_data = [f"{sttime}", f"{vref_a_float:.3f}", f"{vref_b_float:.3f}"]
+        for i in range(MAX_SENSORS-2):
+            if args.calculate_values:
+                vread = int_to_voltage(readings[i+3], aref_voltage, adc_resoltuion)
+                vplot = (vread + (R2/R1) * V_A) * (R1/(R1+R2))
+                # Matrix A
+                try:
+                    if i < 16:
+                        rsensor = (vplot-vref[0])/iref[0]
+                    # Matrix B
+                    else:
+                        rsensor = (vplot-vref[1])/iref[1]
+                except ZeroDivisionError:
+                    rsensor = 0
+                rsensor = rsensor/10E3
+            else:
+                rsensor = 1.81*readings[i+3] - 177
+            transformed_data.append(f"{rsensor:.3f}")
+        writer.writerow(transformed_data)
         sample=next(index)
         # Do not show VREFs
         visible_data_list=data_list[2:]
