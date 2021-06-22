@@ -87,16 +87,16 @@ def retrieve_measurement_data(data_queue, aref_voltage, adc_resoltuion, stop, da
 
             if vref_A_old == 0 and vref_A_old != vref_A_new:
                 print(f"[VREF] INFO: VREF_A = {calculated_vref_A:.3f} V")
-                print(f"             IREF_A = {iref_A*10E9:.0f} nA")
+                print(f"             IREF_A = {iref_A*1E9:.0f} nA")
             if (vref_A_old != 0 and vref_A_old != vref_A_new) or (vref_B_old != 0 and vref_B_old != vref_B_new):
                 print(f"[VREF] WARNING: Fluctuation in VREF.")
                 print(f"                Current VREF_A = {calculated_vref_A:.3f} V")
-                print(f"                Current IREF_A = {iref_A*10E9:.0f} nA")
+                print(f"                Current IREF_A = {iref_A*1E9:.0f} nA")
                 print(f"                Current VREF_B = {calculated_vref_B:.3f} V")
-                print(f"                Current IREF_B = {iref_B*10E9:.0f} nA")
+                print(f"                Current IREF_B = {iref_B*1E9:.0f} nA")
             if vref_B_old == 0 and vref_B_old != vref_B_new:
                 print(f"[VREF] INFO: VREF_B = {calculated_vref_B:.3f} V")
-                print(f"             IREF_B = {iref_B*10E9:.0f} nA")
+                print(f"             IREF_B = {iref_B*1E9:.0f} nA")
             try:
                 data_list = [int (x) for x in serialized_data_list]
                 data_queue.put(data_list, block=False)
@@ -191,7 +191,7 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
                         rsensor = (vplot-vref[1])/iref[1]
                 except ZeroDivisionError:
                     rsensor = 0
-                rsensor = rsensor/10E3
+                rsensor = rsensor/1E3
             else:
                 rsensor = 1.81*readings[i+3] - 177
             transformed_data.append(f"{rsensor:.3f}")
@@ -236,7 +236,7 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
                 except ZeroDivisionError:
                     resistance=0
                 # Show in kOhms
-                resistance = resistance/10E3
+                resistance = resistance/1E3
                 if resistance < 0:
                     animation_logger.debug("Negative resistance!")
                 text = f"{resistance:.3f}"
@@ -251,7 +251,7 @@ def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion,
             line.set_data(x_vals[sensor_id][row], y_vals[sensor_id][row])
         return lines
 
-    anim=animation.FuncAnimation(fig, animate, blit=False, cache_frame_data=False, interval=(SAMPLING_PERIOD*10E3)/10)
+    anim=animation.FuncAnimation(fig, animate, blit=False, cache_frame_data=False, interval=(SAMPLING_PERIOD*1E3)/10)
     plt.show()
 
 if __name__ == "__main__":
