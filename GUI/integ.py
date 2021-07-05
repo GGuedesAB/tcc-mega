@@ -14,6 +14,8 @@ import argparse
 import signal
 import numpy
 from itertools import count, cycle
+
+from numpy.core.shape_base import block
 inter_path=os.path.dirname(os.path.realpath(__file__))
 sys.path.append(inter_path)
 from logger import Logger
@@ -21,10 +23,15 @@ from logger import Logger
 R1=1
 R2=4.4
 V_A=1
-DELTA=10
-SAMPLING_PERIOD=68+DELTA
+DELTA=0.1
+SAMPLING_PERIOD=10+DELTA
+CAUTION_VOLTAGE=1.5
+SATURATION_VOLTAGE=1.7
 # 32 sensors in chip matrix + VREF_A + VREF_B
 MAX_SENSORS=34
+N_ROWS=2
+N_COLS=3
+SENSORS_PER_WINDOW=5
 R_OF_IREF=200E3
 
 parser = argparse.ArgumentParser(description='Interprets and plots results given by the Arduino.')
@@ -32,11 +39,14 @@ parser = argparse.ArgumentParser(description='Interprets and plots results given
 parser.add_argument('--port', help='Serial port name to connect', type=str, required=True)
 parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
 parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
+parser.add_argument('--max-deviation', help='Max modular difference between a group of resistances (in kOhms)', type=int, default=10)
 parser.add_argument('--verbose', help='Outputs all messages', action='store_true')
 parser.add_argument('--virtual', help='Create virtual serial connection', action='store_true')
 parser.add_argument('--calculate-values', help='Makes the calculations to find sensor resistance instead of using static formula', action='store_true')
 #parser.add_argument('--no-gui', help="Do not show GUI", action='store_true')
 args = parser.parse_args()
+# Will not complain of high deviance unless resistance difference of a group is less than 10kOhms
+ACCEPTABLE_DEVIANCE=args.max_deviation
 
 def int_to_voltage(int_value, aref_voltage, adc_resoltuion):
     return float((aref_voltage*int_value)/adc_resoltuion)
@@ -113,145 +123,405 @@ def retrieve_measurement_data(data_queue, aref_voltage, adc_resoltuion, stop, da
             exit(1)
     retriever_logger.debug("Bye")
 
-def make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion, vref, iref, stop_threads):
-    animation_logger=Logger("ANIMATION")
+def build_matrix_figure (list_of_titles):
+    fig, axes = plt.subplots(nrows=N_ROWS, ncols=N_COLS)
+    axes[0][0].set_ylabel("Resistance of sensors (kOhms)")
+    axes[1][0].set_ylabel("Resistance of sensors (kOhms)")
+    axes[0][0].set_title(list_of_titles[0])
+    axes[0][1].set_title(list_of_titles[1])
+    axes[1][0].set_title(list_of_titles[2])
+    axes[1][1].set_title(list_of_titles[3])
+    axes[1][2].set_title(list_of_titles[4])
+    lines=[]
+    for row in range(N_ROWS):
+        for column in range(N_COLS):
+            if row == 0 and column == 2:
+                continue
+            lines.append(axes[row][column].plot([],[])[0])
+            axes[row][column].grid(which='major', alpha=0.5)
+            axes[row][column].grid(which='minor', alpha=0.2)
+            axes[row][column].set_ylim(-0.1, 200)
+    return fig, axes, lines
+
+def check_deviation(indexes, values, average, acceptable_dev, logger):
+    for i, v in zip(indexes, values):
+        dev = numpy.abs(v-average)
+        if dev > acceptable_dev:
+            # i+2 is to be coherent with resistance layout naming
+            logger.warning(f"Sensor {i+2} has high deviation -> {(dev):.1f} kOhms")
+
+def get_max_voltage(voltages, indexes):
+    index = indexes[0]
+    max_voltage = voltages[0]
+    for i, voltage in enumerate(voltages):
+        new_voltage = voltage
+        if new_voltage > max_voltage:
+            index = indexes[i]
+            max_voltage = new_voltage
+    return (index, max_voltage)
+
+def get_voltages_resistances_and_average (matrix_indexes, float_data):
+    # i-1 is to be coherent with resistance layout naming
+    matrix_voltages = [float_data[i-1][0] for i in matrix_indexes]
+    # i-1 is to be coherent with resistance layout naming
+    matrix_resistances = [float_data[i-1][1] for i in matrix_indexes]
+    max_voltage_tuple = get_max_voltage(matrix_voltages, matrix_indexes)
+    matrix_average = sum(matrix_resistances)/len(matrix_resistances)
+    return (matrix_resistances, matrix_average, max_voltage_tuple)
+
+
+def process_matrix_A(float_data, data_handling_logger):
+    matrix_A_indexes1 = [1, 2, 4, 7]
+    matrix_A_set1, matrix_A_average1, max_A_voltage_1_tuple = get_voltages_resistances_and_average(matrix_A_indexes1, float_data)
+    check_deviation(matrix_A_indexes1, matrix_A_set1, matrix_A_average1, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_A_indexes2 = [12, 13, 14, 15]
+    matrix_A_set2, matrix_A_average2, max_A_voltage_2_tuple = get_voltages_resistances_and_average(matrix_A_indexes2, float_data)
+    check_deviation(matrix_A_indexes2, matrix_A_set2, matrix_A_average2, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_A_indexes3 = [5, 6]
+    matrix_A_set3, matrix_A_average3, max_A_voltage_3_tuple = get_voltages_resistances_and_average(matrix_A_indexes3, float_data)
+    check_deviation(matrix_A_indexes3, matrix_A_set3, matrix_A_average3, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_A_indexes4 = [9, 10]
+    matrix_A_set4, matrix_A_average4, max_A_voltage_4_tuple = get_voltages_resistances_and_average(matrix_A_indexes4, float_data)
+    check_deviation(matrix_A_indexes4, matrix_A_set4, matrix_A_average4, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_A_indexes5 = [8, 11]
+    matrix_A_set5, matrix_A_average5, max_A_voltage_5_tuple = get_voltages_resistances_and_average(matrix_A_indexes5, float_data)
+    check_deviation(matrix_A_indexes5, matrix_A_set5, matrix_A_average5, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_A_values = [(matrix_A_average1, max_A_voltage_1_tuple), (matrix_A_average2, max_A_voltage_2_tuple), (matrix_A_average3, max_A_voltage_3_tuple), (matrix_A_average4, max_A_voltage_4_tuple), (matrix_A_average5, max_A_voltage_5_tuple)]
+    return matrix_A_values
+
+def process_matrix_B(float_data, data_handling_logger):
+    matrix_B_indexes1 = [17, 18, 20, 23]
+    matrix_B_set1, matrix_B_average1, max_B_voltage_1_tuple = get_voltages_resistances_and_average(matrix_B_indexes1, float_data)
+    check_deviation(matrix_B_indexes1, matrix_B_set1, matrix_B_average1, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_B_indexes2 = [28, 29, 30, 31]
+    matrix_B_set2, matrix_B_average2, max_B_voltage_2_tuple = get_voltages_resistances_and_average(matrix_B_indexes2, float_data)
+    check_deviation(matrix_B_indexes2, matrix_B_set2, matrix_B_average2, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_B_indexes3 = [21, 22]
+    matrix_B_set3, matrix_B_average3, max_B_voltage_3_tuple = get_voltages_resistances_and_average(matrix_B_indexes3, float_data)
+    check_deviation(matrix_B_indexes3, matrix_B_set3, matrix_B_average3, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_B_indexes4 = [25, 26]
+    matrix_B_set4, matrix_B_average4, max_B_voltage_4_tuple = get_voltages_resistances_and_average(matrix_B_indexes4, float_data)
+    check_deviation(matrix_B_indexes4, matrix_B_set4, matrix_B_average4, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_B_indexes5 = [24, 27]
+    matrix_B_set5, matrix_B_average5, max_B_voltage_5_tuple = get_voltages_resistances_and_average(matrix_B_indexes5, float_data)
+    check_deviation(matrix_B_indexes5, matrix_B_set5, matrix_B_average5, ACCEPTABLE_DEVIANCE, data_handling_logger)
+
+    matrix_B_values = [(matrix_B_average1, max_B_voltage_1_tuple), (matrix_B_average2, max_B_voltage_2_tuple), (matrix_B_average3, max_B_voltage_3_tuple), (matrix_B_average4, max_B_voltage_4_tuple), (matrix_B_average5, max_B_voltage_5_tuple)]
+    return matrix_B_values
+
+def handle_data(data_queue, aref_voltage, adc_resoltuion, stop_threads, vref, iref, output_data_A, output_data_B, output_text_values):
+    data_handling_logger=Logger("DATA HANDLING")
     if args.verbose:
-        animation_logger.set_debug()
+        data_handling_logger.set_debug()
     else:
-        animation_logger.set_error()
-    x_vals={}
-    y_vals={}
-    for sensor in range(nsensors):
-        # Tuple will work for (Voltage, Resistance)
-        x_vals[sensor]=([], [])
-        y_vals[sensor]=([], [])
-    if not os.path.exists("logs"):
-        os.makedirs("logs")
+        data_handling_logger.set_error()
+    ts = time.time()
+    sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H-%M-%S')
+    file_name="log_"+sttime+".csv"
+    if not os.path.exists(os.path.join(inter_path, "logs")):
+        os.makedirs(os.path.join(inter_path, "logs"))
+    csv_file = open (os.path.join(inter_path, "logs", file_name), "w", newline="")
     writer=csv.writer(csv_file)
     # VREF_A is taken as sensor0, V_REFB is taken as sensor1
     description_list=["sensor"+str(x) for x in range(MAX_SENSORS)]
     description_list.insert(0, "time")
     writer.writerow(description_list)
-
-    index = count()
-    next(index)
-    fig, axes = plt.subplots(nrows=2, ncols=nsensors)
-    axes[0][0].set_ylabel("Voltage in sensors (V)")
-    axes[0][0].set_title('Reference resistor A')
-    axes[0][1].set_title('Deposited resistor A')
-    axes[0][2].set_title('Reference resistor B')
-    axes[0][3].set_title('Deposited resistor B')
-    axes[1][0].set_ylabel("Resistance of sensors (kOhms)")
-    lines=[]
-    smaller_measured_resistance=[50, 50, 50, 50]
-    biggest_measured_resistance=[100, 100, 100, 100]
-    for row in range(2):
-        for column in range(nsensors):
-            lines.append(axes[row][column].plot([],[])[0])
-            axes[row][column].grid(which='major', alpha=0.5)
-            axes[row][column].grid(which='minor', alpha=0.2)
-            if (row == 0):
-                major_ticks=numpy.arange(0,2.1,0.3)
-                minor_ticks=numpy.arange(0,2.1,0.15)
-                axes[row][column].set_yticks(major_ticks)
-                axes[row][column].set_yticks(minor_ticks, minor=True)
-                axes[row][column].set_ylim(-0.1, 2.0)
-                axes[row][column].axhline(y=0.9, color='r', linestyle=':')
-                axes[row][column].axhline(y=1.8, color='r', linestyle=':')
-            else:
-                axes[row][column].set_ylim(-0.1, 200)
-    texts=[]
-
-    def animate(i):
+    csv_file.close()
+    while not stop_threads[0]:
         try:
             data_list = data_queue.get(block=True, timeout=SAMPLING_PERIOD)
             data_queue.task_done()
         except queue.Empty:
-            animation_logger.warning("Did not recieve measurement data from socket. Replacing with 0's")
+            data_handling_logger.warning("Did not recieve measurement data from socket. Replacing with 0's")
             data_list=[0]*MAX_SENSORS
+        # First logs everything in csv file
         ts = time.time()
         sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H:%M:%S.%f')[:-3]
-        readings = [sttime]
-        readings.extend(data_list)
         # VREF_A is taken as sensor0
         # VREF_B is taken as sensor1
-        vref_a_float = int_to_voltage(readings[1], aref_voltage, adc_resoltuion)
-        vref_b_float = int_to_voltage(readings[2], aref_voltage, adc_resoltuion)
-        transformed_data = [f"{sttime}", f"{vref_a_float:.3f}", f"{vref_b_float:.3f}"]
+        vref_a_float = vref[0]
+        vref_b_float = vref[1]
+        iref_a_float = iref[0]
+        iref_b_float = iref[1]
+        string_data = [f"{sttime}", f"{vref_a_float:.3f}", f"{vref_b_float:.3f}"]
+        float_data = []
         for i in range(MAX_SENSORS-2):
-            if args.calculate_values:
-                vread = int_to_voltage(readings[i+3], aref_voltage, adc_resoltuion)
-                vplot = (vread + (R2/R1) * V_A) * (R1/(R1+R2))
+            #if args.calculate_values:
+            vread = int_to_voltage(data_list[i+2], aref_voltage, adc_resoltuion)
+            vplot = (vread + (R2/R1) * V_A) * (R1/(R1+R2))
+            try:
                 # Matrix A
-                try:
-                    if i < 16:
-                        rsensor = (vplot-vref[0])/iref[0]
-                    # Matrix B
-                    else:
-                        rsensor = (vplot-vref[1])/iref[1]
-                except ZeroDivisionError:
-                    rsensor = 0
-                rsensor = rsensor/1E3
-            else:
-                rsensor = 1.81*readings[i+3] - 177
-            transformed_data.append(f"{rsensor:.3f}")
-        writer.writerow(transformed_data)
-        sample=next(index)
-        # Do not show VREFs
-        visible_data_list=data_list[2:]
-        row = 0
-        # These are
-        #   First reference in A
-        #   First deposited in A
-        #   First reference in B
-        #   First deposited in B
-        sensors=cycle([0,1,16,17])
-        for text in texts:
-            text.set_visible(False)
-        for j, line in enumerate(lines):
-            real_sensor_id=next(sensors)
-            sensor_id=j%nsensors
-            if j > 0 and j % nsensors == 0:
-                row+=1
-            # Voltage
-            if row == 0:
-                x_vals[sensor_id][row].append(sample)
-                voltage_read=float((aref_voltage*visible_data_list[real_sensor_id])/adc_resoltuion)
-                voltage_plot=(voltage_read+(R2/R1)*V_A)*(R1/(R1+R2))
-                text = f"{voltage_plot:.3f}"
-                y_vals[sensor_id][row].append(voltage_plot)
-                texts.append(axes[0][sensor_id].text(1, 1.05, text, fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axes[0][sensor_id].transAxes))
-            # Resistance
-            else:
-                x_vals[sensor_id][row].append(sample)
-                voltage_read=float((aref_voltage*visible_data_list[real_sensor_id])/adc_resoltuion)
-                voltage_plot=(voltage_read+(R2/R1)*V_A)*(R1/(R1+R2))
-                try:
-                    if real_sensor_id < 2:
-                        # Group A
-                        resistance=(voltage_plot-vref[0])/iref[0]
-                    else:
-                        # Group B
-                        resistance=(voltage_plot-vref[1])/iref[1]
-                except ZeroDivisionError:
-                    resistance=0
-                # Show in kOhms
-                resistance = resistance/1E3
-                if resistance < 0:
-                    animation_logger.debug("Negative resistance!")
-                text = f"{resistance:.3f}"
-                texts.append(axes[1][sensor_id].text(1, 1.05, text, fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axes[1][sensor_id].transAxes))
-                if smaller_measured_resistance[sensor_id] <= 50 or (resistance > 50 and resistance < smaller_measured_resistance[sensor_id]):
-                    smaller_measured_resistance[sensor_id] = resistance - 50
-                if resistance > biggest_measured_resistance[sensor_id]:
-                    biggest_measured_resistance[sensor_id] = resistance + 50
-                y_vals[sensor_id][row].append(resistance)
-            axes[row][sensor_id].set_xlim(0, sample)
-            axes[1][sensor_id].set_ylim(smaller_measured_resistance[sensor_id], biggest_measured_resistance[sensor_id])
-            line.set_data(x_vals[sensor_id][row], y_vals[sensor_id][row])
-        return lines
+                if i < 16:
+                    rsensor = (vplot-vref_a_float)/iref_a_float
+                # Matrix B
+                else:
+                    rsensor = (vplot-vref_b_float)/iref_b_float
+            except ZeroDivisionError:
+                rsensor = 0
+            rsensor = rsensor/1E3
+            #else:
+                #rsensor = 1.81*data_list[i+2] - 177
+            string_data.append(f"{rsensor:.3f}")
+            float_data.append((vplot, rsensor))
+        csv_file = open (os.path.join(inter_path, "logs", file_name), "a", newline="")
+        writer=csv.writer(csv_file)
+        writer.writerow(string_data)
+        csv_file.close()
 
-    anim=animation.FuncAnimation(fig, animate, blit=False, cache_frame_data=False, interval=(SAMPLING_PERIOD*1E3)/10)
+        # Now separates the values to be shown by fig of matrix A and fig of matrix B
+        # This part of the code also takes the averages of the values according to physical proximity in the chip
+        matrix_A_values = process_matrix_A(float_data, data_handling_logger)
+        matrix_B_values = process_matrix_B(float_data, data_handling_logger)
+        matrix_A_B_values = float_data
+        try:
+            output_data_A.put(matrix_A_values, block=False)
+        except queue.Full:
+            data_handling_logger.warning("Matrix A data queue is full, dumping measurements")
+
+        try:
+            output_data_B.put(matrix_B_values, block=False)
+        except queue.Full:
+            data_handling_logger.warning("Matrix B data queue is full, dumping measurements")
+
+        try:
+            output_text_values.put(matrix_A_B_values, block=False)
+        except queue.Full:
+            data_handling_logger.warning("Values data queue is full, dumping measurements")
+
+def single_index_to_tuple (i):
+    #row = int(i/N_COLS)
+    #col = int(i%N_COLS)
+    # This can become a class if this mapping needs to be flexible or more elaborate
+    if i == 0:
+        return (0,0)
+    elif i == 1:
+        return (0,1)
+    elif i == 2 :
+        return (1,0)
+    elif i == 3 :
+        return (1,1)
+    elif i == 4 :
+        return (1,2)
+    else :
+        raise NotImplementedError
+
+position_dict = {
+# Un-groupped 
+    5 : (0.65, 0.1),
+    18: (0.75, 0.1),
+    21: (0.85, 0.1),
+    34: (0.95, 0.1),
+# Un-groupped
+
+# Group 10
+    14 : (0.45, 0.9),
+    17 : (0.55, 0.9),
+    15 : (0.45, 0.8),
+    16 : (0.55, 0.8),
+# Group 9
+    9 : (0.15, 0.9),
+    6 : (0.25, 0.9),
+    4 : (0.15, 0.8),
+    3 : (0.25, 0.8),
+# Group 6
+    8 : (0.15, 0.7),
+    7 : (0.25, 0.7),
+# Group 8
+    13 : (0.75, 0.7),
+    10 : (0.75, 0.6),
+# Group 7
+    11 : (0.45, 0.7),
+    12 : (0.55, 0.7),
+
+# Group 5
+    26 : (0.75, 0.4),
+    29 : (0.75, 0.5),
+# Group 4
+    27 : (0.45, 0.4),
+    28 : (0.55, 0.4),
+# Group 3
+    24 : (0.15, 0.4),
+    23 : (0.25, 0.4),
+# Group 2
+    31 : (0.45, 0.3),
+    32 : (0.55, 0.3),
+    30 : (0.45, 0.2),
+    33 : (0.55, 0.2),
+# Group 1
+    20 : (0.15, 0.3),
+    19 : (0.25, 0.3),
+    25 : (0.15, 0.2),
+    22 : (0.25, 0.2),
+}
+
+def calculate_positioning(index):
+    return position_dict[index]
+
+def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_threads):
+    animation_logger=Logger("ANIMATION")
+    if args.verbose:
+        animation_logger.set_debug()
+    else:
+        animation_logger.set_error()
+    matrix_A_x_vals={}
+    matrix_A_y_vals={}
+    matrix_B_x_vals={}
+    matrix_B_y_vals={}
+    for sensor in range(SENSORS_PER_WINDOW):
+        matrix_A_x_vals[sensor]=[]
+        matrix_A_y_vals[sensor]=[]
+        matrix_B_x_vals[sensor]=[]
+        matrix_B_y_vals[sensor]=[]
+
+    index = count()
+    next(index)
+    matrix_A_title_list=['R3|R5|R6|R9', 'R14|R15|R16|R17', 'R7|R8', 'R11|R12', 'R10|R13']
+    figA, axesA, linesA = build_matrix_figure(matrix_A_title_list)
+    figA.suptitle("Matrix A", fontsize=16)
+    textsA=[]
+    matrix_B_title_list=['R19|R20|R22|R25', 'R30|R31|R32|R33', 'R23|R24', 'R27|R28', 'R26|R29']
+    figB, axesB, linesB = build_matrix_figure(matrix_B_title_list)
+    figB.suptitle("Matrix B", fontsize=16)
+    textsB=[]
+    figValues, ax = plt.subplots(1,1)
+    figValues.suptitle("Individual resistor values", fontsize=16)
+    textsValues=[]
+    smaller_measured_resistance=[50, 50, 50, 50, 50]
+    biggest_measured_resistance=[100, 100, 100, 100, 100]
+    output_data_A = queue.Queue(10)
+    output_data_B = queue.Queue(10)
+    output_text_values = queue.Queue(10)
+    try:
+        data_handling_thread = threading.Thread(target=handle_data, name="data_handling_thread", args=(data_queue, aref_voltage, adc_resoltuion, stop_threads, vref, iref, output_data_A, output_data_B, output_text_values))
+    except Exception as e:
+        animation_logger.error("Could not create thread")
+        e.with_traceback()
+    data_handling_thread.start()
+
+    indexA = count()
+    next(indexA)
+    indexB = count()
+    next(indexB)
+
+    def animateValue(i):
+        try:
+            # data_list is a list of tuples:
+            # [(vplot, resistance)]
+            data_list = output_text_values.get(block=True, timeout=SAMPLING_PERIOD)
+            output_text_values.task_done()
+            voltages = [value[0] for value in data_list]
+            resistances = [voltage[1] for voltage in data_list]
+        except queue.Empty:
+            animation_logger.warning("Did not recieve measurement data for matrix A")
+            resistances=[0]*MAX_SENSORS
+            voltages=[0]*MAX_SENSORS
+        for text in textsValues:
+            text.set_visible(False)
+        index = 3
+        # x_pos, y_pos = (0.15, 0.3)
+        for resistance, voltage in zip(resistances, voltages):
+            # index+2 is to be coherent with resistance layout naming
+            text_value_string = f"R{index}\n{resistance:.3f}\n{voltage:.2f}V"
+            x_pos, y_pos = calculate_positioning(index)
+            textsValues.append(ax.text(x_pos, y_pos, text_value_string, fontfamily='serif', color='black', fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=ax.transAxes))
+            index+=1
+
+    def animateA(i):
+        try:
+            # data_list is a list of tuples:
+            # [(resistance, (index, vplot))]
+            data_list = output_data_A.get(block=True, timeout=SAMPLING_PERIOD)
+            output_data_A.task_done()
+            resistances = [value[0] for value in data_list]
+            voltage_infos = [voltage_info[1] for voltage_info in data_list]
+        except queue.Empty:
+            animation_logger.warning("Did not recieve measurement data for matrix A")
+            resistances=[0]*MAX_SENSORS
+        sample=next(indexA)
+        for text in textsA:
+            text.set_visible(False)
+        for j, line in enumerate(linesA):
+            row, col = single_index_to_tuple(j)
+            sensor_id=j
+            resistance = resistances[sensor_id]
+            index, voltage = voltage_infos[sensor_id]
+            max_voltage_string = f"R{index+2}: {voltage:.2f}V"
+            if (voltage > SATURATION_VOLTAGE) :
+                textsA.append(axesA[row][col].text(0.35, 1.1, max_voltage_string, color='red', fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesA[row][col].transAxes))
+            elif (voltage > CAUTION_VOLTAGE):
+                textsA.append(axesA[row][col].text(0.35, 1.1, max_voltage_string, color='orange', fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesA[row][col].transAxes))
+            else:
+                textsA.append(axesA[row][col].text(0.35, 1.1, max_voltage_string, color='black', fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesA[row][col].transAxes))
+            if resistance < 0:
+                animation_logger.debug("Negative resistance!")
+            text = f"{resistance:.3f}"
+            textsA.append(axesA[row][col].text(1, 1.1, text, fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesA[row][col].transAxes))
+            if smaller_measured_resistance[sensor_id] <= 50 or (resistance > 50 and resistance < smaller_measured_resistance[sensor_id]):
+                smaller_measured_resistance[sensor_id] = resistance - 50
+            if resistance > biggest_measured_resistance[sensor_id]:
+                biggest_measured_resistance[sensor_id] = resistance + 50
+            
+            matrix_A_x_vals[sensor_id].append(sample)
+            matrix_A_y_vals[sensor_id].append(resistance)
+
+            axesA[row][col].set_xlim(0, sample)
+            axesA[row][col].set_ylim(smaller_measured_resistance[sensor_id], biggest_measured_resistance[sensor_id])
+            line.set_data(matrix_A_x_vals[sensor_id], matrix_A_y_vals[sensor_id])
+        return linesA
+
+    def animateB(i):
+        try:
+            data_list = output_data_B.get(block=True, timeout=SAMPLING_PERIOD)
+            output_data_B.task_done()
+            resistances = [value[0] for value in data_list]
+            voltage_infos = [voltage_info[1] for voltage_info in data_list]
+        except queue.Empty:
+            animation_logger.warning("Did not recieve measurement data for matrix B")
+            resistances=[0]*MAX_SENSORS
+        sample=next(indexB)
+        for text in textsB:
+            text.set_visible(False)
+        for j, line in enumerate(linesB):
+            row, col = single_index_to_tuple(j)
+            sensor_id=j
+            resistance = resistances[sensor_id]
+            index, voltage = voltage_infos[sensor_id]
+            max_voltage_string = f"R{index+2}: {voltage:.2f}V"
+            if (voltage > SATURATION_VOLTAGE) :
+                textsB.append(axesB[row][col].text(0.35, 1.1, max_voltage_string, color='red', fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesB[row][col].transAxes))
+            elif (voltage > CAUTION_VOLTAGE):
+                textsB.append(axesB[row][col].text(0.35, 1.1, max_voltage_string, color='orange', fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesB[row][col].transAxes))
+            else:
+                textsB.append(axesB[row][col].text(0.35, 1.1, max_voltage_string, color='black', fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesB[row][col].transAxes))
+            if resistance < 0:
+                animation_logger.debug("Negative resistance!")
+            text = f"{resistance:.3f}"
+            textsB.append(axesB[row][col].text(1, 1.1, text, fontweight='bold', fontsize='medium', horizontalalignment='right', verticalalignment='top', transform=axesB[row][col].transAxes))
+            if smaller_measured_resistance[sensor_id] <= 50 or (resistance > 50 and resistance < smaller_measured_resistance[sensor_id]):
+                smaller_measured_resistance[sensor_id] = resistance - 50
+            if resistance > biggest_measured_resistance[sensor_id]:
+                biggest_measured_resistance[sensor_id] = resistance + 50
+            
+            matrix_B_x_vals[sensor_id].append(sample)
+            matrix_B_y_vals[sensor_id].append(resistance)
+
+            axesB[row][col].set_xlim(0, sample)
+            axesB[row][col].set_ylim(smaller_measured_resistance[sensor_id], biggest_measured_resistance[sensor_id])
+            line.set_data(matrix_B_x_vals[sensor_id], matrix_B_y_vals[sensor_id])
+        return linesB
+
+    animA=animation.FuncAnimation(figA, animateA, blit=False, cache_frame_data=False, interval=SAMPLING_PERIOD*1E3)
+    animB=animation.FuncAnimation(figB, animateB, blit=False, cache_frame_data=False, interval=SAMPLING_PERIOD*1E3)
+    animValues=animation.FuncAnimation(figValues, animateValue, blit=False, cache_frame_data=True, interval=SAMPLING_PERIOD*1E3)
     plt.show()
 
 if __name__ == "__main__":
@@ -327,14 +597,7 @@ if __name__ == "__main__":
             e.with_traceback()
         retriever_thread.start()
 
-        ts = time.time()
-        sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H-%M-%S')
-        file_name="log_"+sttime+".csv"
-        if not os.path.exists(os.path.join(inter_path, "logs")):
-            os.makedirs(os.path.join(inter_path, "logs"))
-        csv_file = open (os.path.join(inter_path, "logs", file_name), "w", newline="")
-
-        make_animation(data_queue, csv_file, nsensors, aref_voltage, adc_resoltuion, vref, iref, stop_threads)
+        make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_threads)
 
         stop_threads[0]=True
         retriever_thread.join()
@@ -347,7 +610,6 @@ if __name__ == "__main__":
             time.sleep(1)
             gui_monitor_logger.debug("Waiting subprocess")
             poll = serial_read_subproc.poll()
-        csv_file.close()
         conn.close()
         serial_server.close()
         gui_monitor_logger.debug("Bye")
