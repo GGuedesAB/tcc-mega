@@ -3,7 +3,7 @@
 bool ready_to_send = false;
 bool measurement_ready = false;
 bool make_next_measurement = true;
-uint8_t manual_tim2_prescaler = 0;
+uint16_t manual_tim2_prescaler = 0;
 uint8_t is_next = 0;
 uint8_t measurements_A_B = 0;
 char control_A_B = 'A';
@@ -153,8 +153,9 @@ void first_setup () {
     TCCR2B |= (1<<CS21);
     TCCR2B |= (1<<CS20);
     TIMSK2 |= (1<<OCIE2A);
-    // Counts up to 250 -> 16ms
-    OCR2A = 250;
+    // Each tick takes 64us
+    // Counts up to 125 -> 8ms
+    OCR2A = 125;
     TCNT2 = 0;
 
     interrupts();
@@ -221,8 +222,9 @@ ISR(ADC_vect) {
 
 ISR(TIMER2_COMPA_vect) {
     ++manual_tim2_prescaler;
-    // Makes 124 16ms interrupts -> 1984ms
-    if (manual_tim2_prescaler == 124) {
+    // Makes 35 8ms interrupts -> 280ms
+    // Total turnaround: 34 sensors * 280ms = 9.52s
+    if (manual_tim2_prescaler == 35) {
         make_next_measurement=true;
         manual_tim2_prescaler = 0;
     }
