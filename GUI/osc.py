@@ -16,8 +16,8 @@ sys.path.append(inter_path)
 from logger import Logger
 
 # In seconds
-DELTA=10
-SAMPLING_PERIOD=68+DELTA
+DELTA=0.1
+SAMPLING_PERIOD=10+DELTA
 
 parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
 parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
@@ -89,9 +89,11 @@ def produce_window(measurement_queue, ser, stop):
     else:
         producer_logger.set_error()
     while not stop[0]:
+        old_time = time.time()
         measurement_buffer=ser.get_serial_data()
         try:
             measurement_queue.put(measurement_buffer, block=False)
+            producer_logger.debug(f"Delta: {time.time()-old_time:.3f}s")
         except queue.Full:
             producer_logger.warning("Measurement queue is full, dumping new measurements")
     ser.close()
