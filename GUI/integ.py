@@ -161,16 +161,16 @@ def get_max_voltage(voltages, indexes):
     return (index, max_voltage)
 
 def get_voltages_resistances_and_average (matrix_indexes, float_data):
-    # i-1 is to be coherent with resistance layout naming
-    matrix_voltages = [float_data[i-1][0] for i in matrix_indexes]
-    # i-1 is to be coherent with resistance layout naming
-    matrix_resistances = [float_data[i-1][1] for i in matrix_indexes]
+
+    matrix_voltages = [float_data[i][0] for i in matrix_indexes]
+    matrix_resistances = [float_data[i][1] for i in matrix_indexes]
     max_voltage_tuple = get_max_voltage(matrix_voltages, matrix_indexes)
     matrix_average = sum(matrix_resistances)/len(matrix_resistances)
     return (matrix_resistances, matrix_average, max_voltage_tuple)
 
 
 def process_matrix_A(float_data, data_handling_logger):
+    # R3 is sensor 1, because float data does not have the vrefs
     matrix_A_indexes1 = [1, 2, 4, 7]
     matrix_A_set1, matrix_A_average1, max_A_voltage_1_tuple = get_voltages_resistances_and_average(matrix_A_indexes1, float_data)
     check_deviation(matrix_A_indexes1, matrix_A_set1, matrix_A_average1, ACCEPTABLE_DEVIANCE, data_handling_logger)
@@ -195,6 +195,7 @@ def process_matrix_A(float_data, data_handling_logger):
     return matrix_A_values
 
 def process_matrix_B(float_data, data_handling_logger):
+    # R19 is sensor 17, because float data does not have the vrefs
     matrix_B_indexes1 = [17, 18, 20, 23]
     matrix_B_set1, matrix_B_average1, max_B_voltage_1_tuple = get_voltages_resistances_and_average(matrix_B_indexes1, float_data)
     check_deviation(matrix_B_indexes1, matrix_B_set1, matrix_B_average1, ACCEPTABLE_DEVIANCE, data_handling_logger)
@@ -316,10 +317,10 @@ def single_index_to_tuple (i):
 
 position_dict = {
 # Un-groupped 
-    5 : (0.65, 0.1),
-    18: (0.75, 0.1),
-    21: (0.85, 0.1),
-    34: (0.95, 0.1),
+    2 : (0.65, 0.1),
+    5 : (0.75, 0.1),
+    18: (0.85, 0.1),
+    21: (0.95, 0.1),
 # Un-groupped
 
 # Group 10
@@ -382,8 +383,6 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
         matrix_B_x_vals[sensor]=[]
         matrix_B_y_vals[sensor]=[]
 
-    index = count()
-    next(index)
     matrix_A_title_list=['R3|R5|R6|R9', 'R14|R15|R16|R17', 'R7|R8', 'R11|R12', 'R10|R13']
     figA, axesA, linesA = build_matrix_figure(matrix_A_title_list)
     figA.suptitle("Matrix A", fontsize=16)
@@ -426,7 +425,7 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
             voltages=[0]*MAX_SENSORS
         for text in textsValues:
             text.set_visible(False)
-        index = 3
+        index = 2
         # x_pos, y_pos = (0.15, 0.3)
         for resistance, voltage in zip(resistances, voltages):
             # index+2 is to be coherent with resistance layout naming
