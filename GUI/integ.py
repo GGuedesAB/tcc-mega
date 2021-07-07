@@ -256,21 +256,21 @@ def handle_data(data_queue, aref_voltage, adc_resoltuion, stop_threads, vref, ir
         string_data = [f"{sttime}", f"{vref_a_float:.3f}", f"{vref_b_float:.3f}"]
         float_data = []
         for i in range(MAX_SENSORS-2):
-            #if args.calculate_values:
             vread = int_to_voltage(data_list[i+2], aref_voltage, adc_resoltuion)
             vplot = (vread + (R2/R1) * V_A) * (R1/(R1+R2))
             try:
-                # Matrix A
-                if i < 16:
-                    rsensor = (vplot-vref_a_float)/iref_a_float
-                # Matrix B
+                if args.calculate_values:
+                    # Matrix A
+                    if i < 16:
+                        rsensor = (vplot-vref_a_float)/iref_a_float
+                    # Matrix B
+                    else:
+                        rsensor = (vplot-vref_b_float)/iref_b_float
+                    rsensor = rsensor/1E3
                 else:
-                    rsensor = (vplot-vref_b_float)/iref_b_float
+                    rsensor = 1.81*data_list[i+2] - 177
             except ZeroDivisionError:
                 rsensor = 0
-            rsensor = rsensor/1E3
-            #else:
-                #rsensor = 1.81*data_list[i+2] - 177
             string_data.append(f"{rsensor:.3f}")
             float_data.append((vplot, rsensor))
         csv_file = open (os.path.join(inter_path, "logs", file_name), "a", newline="")
