@@ -244,6 +244,7 @@ def handle_data(data_queue, aref_voltage, adc_resoltuion, stop_threads, vref, ir
         except queue.Empty:
             data_handling_logger.warning("Did not recieve measurement data from socket. Replacing with 0's")
             data_list=[0]*MAX_SENSORS
+        data_handling_logger.debug(f"{data_list}")
         # First logs everything in csv file
         ts = time.time()
         sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H:%M:%S.%f')[:-3]

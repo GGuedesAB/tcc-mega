@@ -58,6 +58,7 @@ class Oscilloscope ():
         while not success_read:
             try:
                 data = self.ser.read_until('\n'.encode('utf-8'))
+                self.logger.debug(f"{data}")
             except serial.SerialException:
                 self.logger.warning ('Lost connection on port ' + self.port)
                 self.connected = False
