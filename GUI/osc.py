@@ -1,3 +1,4 @@
+from GUI.integ import TIME_TOLERANCE
 import serial
 import serial.tools.list_ports
 import numpy
@@ -15,17 +16,21 @@ inter_path=os.path.dirname(os.path.realpath(__file__))
 sys.path.append(inter_path)
 from logger import Logger
 
-# In seconds
-SAMPLING_PERIOD=61.2
-DELTA=0.1*SAMPLING_PERIOD
-SAMPLING_PERIOD=SAMPLING_PERIOD+DELTA
 
 parser = argparse.ArgumentParser(description='Serial monitor script. Creates a socket and sends data read from serial input there.')
 parser.add_argument('--port', help='Port to make serial connection', type=str, required=True)
 parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
 parser.add_argument('--baud', help='Baud rate of serial connection', type=int, default=115200)
+parser.add_argument('--time-tolerance', help='Percentage of tolerance calculated over the sampling period', type=int, default=10)
 parser.add_argument('--verbose', help='Outputs all messages', action='store_true')
 args = parser.parse_args()
+
+TIME_TOLERANCE=args.time_tolerance/100
+
+# In seconds
+SAMPLING_PERIOD=61.2
+DELTA=TIME_TOLERANCE*SAMPLING_PERIOD
+SAMPLING_PERIOD=SAMPLING_PERIOD+DELTA
 
 class Oscilloscope ():
     def __init__ (self, config):

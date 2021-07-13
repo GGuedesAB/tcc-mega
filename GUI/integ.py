@@ -13,18 +13,34 @@ import datetime
 import argparse
 import signal
 import numpy
-from itertools import count, cycle
-
-from numpy.core.shape_base import block
+from itertools import count
 inter_path=os.path.dirname(os.path.realpath(__file__))
 sys.path.append(inter_path)
 from logger import Logger
+
+parser = argparse.ArgumentParser(description='Interprets and plots results given by the Arduino.')
+#parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
+parser.add_argument('--port', help='Serial port name to connect', type=str, required=True)
+parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
+parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
+parser.add_argument('--max-deviation', help='Max modular difference between a group of resistances (in kOhms)', type=int, default=10)
+parser.add_argument('--time-tolerance', help='Percentage of tolerance calculated over the sampling period', type=int, default=10)
+parser.add_argument('--verbose', help='Outputs all messages', action='store_true')
+parser.add_argument('--virtual', help='Create virtual serial connection', action='store_true')
+parser.add_argument('--calculate-values', help='Makes the calculations to find sensor resistance instead of using static formula', action='store_true')
+#parser.add_argument('--no-gui', help="Do not show GUI", action='store_true')
+args = parser.parse_args()
+
+# Will not complain of high deviance unless resistance difference of a group is less than 10kOhms
+ACCEPTABLE_DEVIANCE=args.max_deviation
+
+TIME_TOLERANCE=args.time_tolerance/100
 
 R1=1
 R2=4.4
 V_A=1
 SAMPLING_PERIOD=61.2
-DELTA=0.1*SAMPLING_PERIOD
+DELTA=TIME_TOLERANCE*SAMPLING_PERIOD
 SAMPLING_PERIOD=SAMPLING_PERIOD+DELTA
 CAUTION_VOLTAGE=1.5
 SATURATION_VOLTAGE=1.7
@@ -35,19 +51,6 @@ N_COLS=3
 SENSORS_PER_WINDOW=5
 R_OF_IREF=200E3
 
-parser = argparse.ArgumentParser(description='Interprets and plots results given by the Arduino.')
-#parser.add_argument('--nsensors', help='Number of sensors that will be monitored', type=int, required=True)
-parser.add_argument('--port', help='Serial port name to connect', type=str, required=True)
-parser.add_argument('--aref', help='Voltage reference of the Arduino board', type=float, default=5)
-parser.add_argument('--adc_resolution', help='Number of bits of resolution of the ADC', type=int, default=10)
-parser.add_argument('--max-deviation', help='Max modular difference between a group of resistances (in kOhms)', type=int, default=10)
-parser.add_argument('--verbose', help='Outputs all messages', action='store_true')
-parser.add_argument('--virtual', help='Create virtual serial connection', action='store_true')
-parser.add_argument('--calculate-values', help='Makes the calculations to find sensor resistance instead of using static formula', action='store_true')
-#parser.add_argument('--no-gui', help="Do not show GUI", action='store_true')
-args = parser.parse_args()
-# Will not complain of high deviance unless resistance difference of a group is less than 10kOhms
-ACCEPTABLE_DEVIANCE=args.max_deviation
 
 def int_to_voltage(int_value, aref_voltage, adc_resoltuion):
     return float((aref_voltage*int_value)/adc_resoltuion)
@@ -547,7 +550,7 @@ if __name__ == "__main__":
         exit(1)
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"virtual_sensor.py"), "--port", "dummy", "--nsensors", str(MAX_SENSORS)]
     else:
-        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(MAX_SENSORS)]
+        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(MAX_SENSORS), "--time-tolerance", TIME_TOLERANCE]
     server_addr=('localhost', 25565)
     serial_server = socket.socket()
     serial_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
