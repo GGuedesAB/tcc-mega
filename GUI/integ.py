@@ -550,7 +550,7 @@ if __name__ == "__main__":
         exit(1)
         serial_monitor_cmd=[python_interp, os.path.join(inter_path,"virtual_sensor.py"), "--port", "dummy", "--nsensors", str(MAX_SENSORS)]
     else:
-        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(MAX_SENSORS), "--time-tolerance", TIME_TOLERANCE]
+        serial_monitor_cmd=[python_interp, os.path.join(inter_path,"osc.py"), "--port", port, "--nsensors", str(MAX_SENSORS), "--time-tolerance", str(args.time_tolerance)]
     server_addr=('localhost', 25565)
     serial_server = socket.socket()
     serial_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
