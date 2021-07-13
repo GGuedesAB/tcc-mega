@@ -1,4 +1,3 @@
-from GUI.integ import TIME_TOLERANCE
 import serial
 import serial.tools.list_ports
 import numpy
