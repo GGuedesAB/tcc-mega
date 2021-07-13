@@ -222,9 +222,9 @@ ISR(ADC_vect) {
 
 ISR(TIMER2_COMPA_vect) {
     ++manual_tim2_prescaler;
-    // Makes 75 8ms interrupts -> 600ms
-    // Total turnaround: 34 sensors * 600ms = 20.4s
-    if (manual_tim2_prescaler == 75) {
+    // Makes 225 8ms interrupts -> 1800ms
+    // Total turnaround: 34 sensors * 1800ms = 61.2s
+    if (manual_tim2_prescaler == 225) {
         make_next_measurement = true;
         manual_tim2_prescaler = 0;
     }
