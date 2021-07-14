@@ -27,9 +27,9 @@ args = parser.parse_args()
 TIME_TOLERANCE=args.time_tolerance/100
 
 # In seconds
-SAMPLING_PERIOD=9.52
-DELTA=TIME_TOLERANCE*SAMPLING_PERIOD
-SAMPLING_PERIOD=SAMPLING_PERIOD+DELTA
+ACTUAL_SAMPLING_PERIOD=9.52
+DELTA=TIME_TOLERANCE*ACTUAL_SAMPLING_PERIOD
+CORRECTED_SAMPLING_PERIOD=ACTUAL_SAMPLING_PERIOD+DELTA
 
 class Oscilloscope ():
     def __init__ (self, config):
@@ -125,7 +125,7 @@ def consume_reading(measurement_queue, num_sensors, stop):
         return
     while not stop[0]:
         try:
-            measurement_buffer = measurement_queue.get(block=True, timeout=SAMPLING_PERIOD)
+            measurement_buffer = measurement_queue.get(block=True, timeout=CORRECTED_SAMPLING_PERIOD)
             measurement_queue.task_done()
         except queue.Empty:
             consumer_logger.warning("Measurement readings are out of sync")

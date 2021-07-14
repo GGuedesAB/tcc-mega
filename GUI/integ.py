@@ -39,9 +39,9 @@ TIME_TOLERANCE=args.time_tolerance/100
 R1=1
 R2=4.4
 V_A=1
-SAMPLING_PERIOD=9.52
-DELTA=TIME_TOLERANCE*SAMPLING_PERIOD
-SAMPLING_PERIOD=SAMPLING_PERIOD+DELTA
+ACTUAL_SAMPLING_PERIOD=9.52
+DELTA=TIME_TOLERANCE*ACTUAL_SAMPLING_PERIOD
+CORRECTED_SAMPLING_PERIOD=ACTUAL_SAMPLING_PERIOD+DELTA
 CAUTION_VOLTAGE=1.5
 SATURATION_VOLTAGE=1.7
 # 32 sensors in chip matrix + VREF_A + VREF_B
@@ -243,7 +243,7 @@ def handle_data(data_queue, aref_voltage, adc_resoltuion, stop_threads, vref, ir
     csv_file.close()
     while not stop_threads[0]:
         try:
-            data_list = data_queue.get(block=True, timeout=SAMPLING_PERIOD)
+            data_list = data_queue.get(block=True, timeout=CORRECTED_SAMPLING_PERIOD)
             data_queue.task_done()
         except queue.Empty:
             data_handling_logger.warning("Did not recieve measurement data from socket. Replacing with 0's")
@@ -420,12 +420,12 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
         try:
             # data_list is a list of tuples:
             # [(vplot, resistance)]
-            data_list = output_text_values.get(block=True, timeout=SAMPLING_PERIOD)
+            data_list = output_text_values.get(block=True, timeout=CORRECTED_SAMPLING_PERIOD)
             output_text_values.task_done()
             voltages = [value[0] for value in data_list]
             resistances = [voltage[1] for voltage in data_list]
         except queue.Empty:
-            animation_logger.warning("Did not recieve measurement data for matrix A")
+            animation_logger.warning("Did not recieve measurement data for values list")
             resistances=[0]*MAX_SENSORS
             voltages=[0]*MAX_SENSORS
         for text in textsValues:
@@ -443,7 +443,7 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
         try:
             # data_list is a list of tuples:
             # [(resistance, (index, vplot))]
-            data_list = output_data_A.get(block=True, timeout=SAMPLING_PERIOD)
+            data_list = output_data_A.get(block=True, timeout=CORRECTED_SAMPLING_PERIOD)
             output_data_A.task_done()
             resistances = [value[0] for value in data_list]
             voltage_infos = [voltage_info[1] for voltage_info in data_list]
@@ -484,7 +484,7 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
 
     def animateB(i):
         try:
-            data_list = output_data_B.get(block=True, timeout=SAMPLING_PERIOD)
+            data_list = output_data_B.get(block=True, timeout=CORRECTED_SAMPLING_PERIOD)
             output_data_B.task_done()
             resistances = [value[0] for value in data_list]
             voltage_infos = [voltage_info[1] for voltage_info in data_list]
@@ -523,9 +523,9 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
             line.set_data(matrix_B_x_vals[sensor_id], matrix_B_y_vals[sensor_id])
         return linesB
 
-    animA=animation.FuncAnimation(figA, animateA, blit=False, cache_frame_data=False, interval=SAMPLING_PERIOD*1E3)
-    animB=animation.FuncAnimation(figB, animateB, blit=False, cache_frame_data=False, interval=SAMPLING_PERIOD*1E3)
-    animValues=animation.FuncAnimation(figValues, animateValue, blit=False, cache_frame_data=True, interval=SAMPLING_PERIOD*1E3)
+    animA=animation.FuncAnimation(figA, animateA, blit=False, cache_frame_data=False, interval=ACTUAL_SAMPLING_PERIOD*1E3)
+    animB=animation.FuncAnimation(figB, animateB, blit=False, cache_frame_data=False, interval=ACTUAL_SAMPLING_PERIOD*1E3)
+    animValues=animation.FuncAnimation(figValues, animateValue, blit=False, cache_frame_data=True, interval=ACTUAL_SAMPLING_PERIOD*1E3)
     plt.show()
 
 if __name__ == "__main__":
