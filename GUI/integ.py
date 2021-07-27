@@ -149,8 +149,9 @@ def build_matrix_figure (list_of_titles):
 
 def check_deviation(indexes, values, average, acceptable_dev, logger):
     for i, v in zip(indexes, values):
-        dev = numpy.abs(v-average)
-        if dev > acceptable_dev:
+        dev = v-average
+        dev_abs = numpy.abs(dev)
+        if dev_abs > acceptable_dev:
             # i+2 is to be coherent with resistance layout naming
             logger.warning(f"Sensor {i+2} has high deviation.\n\tGroup mean:    {average:.1f} kOhms\n\tCurrent value: {v:.1f} kOhms\n\tDeviation:     {dev:.1f} kOhms\n")
 
