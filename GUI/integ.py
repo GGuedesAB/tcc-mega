@@ -60,7 +60,7 @@ def retrieve_measurement_data(data_queue, aref_voltage, adc_resoltuion, stop, da
     if args.verbose:
         retriever_logger.set_debug()
     else:
-        retriever_logger.set_error()
+        retriever_logger.set_warning()
     vref_A_new=0
     vref_A_old=0
     vref_B_new=0
@@ -152,7 +152,7 @@ def check_deviation(indexes, values, average, acceptable_dev, logger):
         dev = numpy.abs(v-average)
         if dev > acceptable_dev:
             # i+2 is to be coherent with resistance layout naming
-            logger.warning(f"Sensor {i+2} has high deviation -> {(dev):.1f} kOhms")
+            logger.warning(f"Sensor {i+2} has high deviation.\n\tGroup mean:    {average:.1f} kOhms\n\tCurrent value: {v:.1f} kOhms\n\tDeviation:     {dev:.1f} kOhms\n")
 
 def get_max_voltage(voltages, indexes):
     index = indexes[0]
@@ -228,7 +228,7 @@ def handle_data(data_queue, aref_voltage, adc_resoltuion, stop_threads, vref, ir
     if args.verbose:
         data_handling_logger.set_debug()
     else:
-        data_handling_logger.set_error()
+        data_handling_logger.set_warning()
     ts = time.time()
     sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H-%M-%S')
     file_name="log_"+sttime+".csv"
@@ -377,7 +377,7 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
     if args.verbose:
         animation_logger.set_debug()
     else:
-        animation_logger.set_error()
+        animation_logger.set_warning()
     matrix_A_x_vals={}
     matrix_A_y_vals={}
     matrix_B_x_vals={}
@@ -533,7 +533,7 @@ if __name__ == "__main__":
     if args.verbose:
         gui_monitor_logger.set_debug()
     else:
-        gui_monitor_logger.set_error()
+        gui_monitor_logger.set_warning()
     #nsensors=args.nsensors
     nsensors=4
     if nsensors > MAX_SENSORS:
