@@ -389,7 +389,7 @@ def make_animation(data_queue, aref_voltage, adc_resoltuion, vref, iref, stop_th
         matrix_B_x_vals[sensor]=[]
         matrix_B_y_vals[sensor]=[]
 
-    matrix_A_title_list=['R3|R5|R6|R9', 'R14|R15|R16|R17', 'R7|R8', 'R11|R12', 'R10|R13']
+    matrix_A_title_list=['R3|R4|R6|R9', 'R14|R15|R16|R17', 'R7|R8', 'R11|R12', 'R10|R13']
     figA, axesA, linesA = build_matrix_figure(matrix_A_title_list)
     figA.suptitle("Matrix A", fontsize=16)
     textsA=[]
